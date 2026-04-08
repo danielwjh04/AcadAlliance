@@ -336,7 +336,7 @@ class Dropdown:
         return [
             pygame.Rect(
                 self.rect.x,
-                self.rect.bottom + index * self.option_height,
+                self.rect.bottom + 4 + index * self.option_height,
                 self.rect.width,
                 self.option_height,
             )
@@ -386,11 +386,10 @@ class Dropdown:
         pygame.draw.rect(surface, BORDER, overlay_rect, 2, border_radius=12)
 
         for index, option_rect in enumerate(option_rects):
-            draw_rect = option_rect.move(0, 4)
             fill = HOVER if index == self.hovered_index or self.options[index] == self.selected else PANEL
-            pygame.draw.rect(surface, fill, draw_rect)
+            pygame.draw.rect(surface, fill, option_rect)
             option_text = self.text_font.render(self.options[index], True, TEXT)
-            surface.blit(option_text, (draw_rect.x + 14, draw_rect.y + 4))
+            surface.blit(option_text, (option_rect.x + 14, option_rect.y + 4))
 
         pygame.draw.rect(surface, BORDER, overlay_rect, 2, border_radius=12)
 
@@ -469,7 +468,7 @@ class StudyGroupApp:
 
     def _build_ui(self) -> None:
         left = self.form_panel.x + 24
-        top = self.form_panel.y + 90
+        top = self.form_panel.y + 118
         full_width = self.form_panel.width - 48
         field_height = 46
 
@@ -532,7 +531,7 @@ class StudyGroupApp:
             "Select end",
         )
 
-        checkbox_y = dropdown_y + 96
+        checkbox_y = dropdown_y + 124
         checkbox_gap = 36
         self.checkboxes = [
             Checkbox(left, checkbox_y, OBJECTIVE_OPTIONS[0]),
@@ -540,7 +539,7 @@ class StudyGroupApp:
             Checkbox(left, checkbox_y + checkbox_gap * 2, OBJECTIVE_OPTIONS[2]),
         ]
 
-        button_y = checkbox_y + checkbox_gap * 3 + 24
+        button_y = checkbox_y + checkbox_gap * 3 + 18
         self.submit_button = Button(left, button_y, 132, 46, "Submit", ACCENT, ACCENT_DARK)
         self.clear_button = Button(
             left + 146,
@@ -764,13 +763,13 @@ class StudyGroupApp:
             dropdown.draw(self.screen)
 
         objective_label = self.section_font.render("Learning Objectives", True, TEXT)
-        self.screen.blit(objective_label, (self.form_panel.x + 24, self.form_panel.y + 388))
+        self.screen.blit(objective_label, (self.form_panel.x + 24, self.form_panel.y + 446))
         objective_hint = self.small_font.render(
             "Tick every reason you want a study partner for.",
             True,
             TEXT_MUTED,
         )
-        self.screen.blit(objective_hint, (self.form_panel.x + 24, self.form_panel.y + 414))
+        self.screen.blit(objective_hint, (self.form_panel.x + 24, self.form_panel.y + 472))
 
         for checkbox in self.checkboxes:
             checkbox.draw(self.screen)
@@ -780,17 +779,17 @@ class StudyGroupApp:
         self.export_button.draw(self.screen)
 
         status_title = self.section_font.render("Status", True, TEXT)
-        self.screen.blit(status_title, (self.form_panel.x + 24, self.form_panel.y + 570))
+        self.screen.blit(status_title, (self.form_panel.x + 24, self.form_panel.y + 606))
         status_lines = wrap_text(
             self.status_message,
-            self.body_font,
+            self.small_font,
             self.form_panel.width - 48,
         )
         for index, line in enumerate(status_lines):
-            status_surface = self.body_font.render(line, True, self.status_color)
+            status_surface = self.small_font.render(line, True, self.status_color)
             self.screen.blit(
                 status_surface,
-                (self.form_panel.x + 24, self.form_panel.y + 602 + index * 24),
+                (self.form_panel.x + 24, self.form_panel.y + 636 + index * 20),
             )
 
         hotkey_note = self.small_font.render(
@@ -798,7 +797,7 @@ class StudyGroupApp:
             True,
             TEXT_MUTED,
         )
-        self.screen.blit(hotkey_note, (self.form_panel.x + 24, self.form_panel.bottom - 36))
+        self.screen.blit(hotkey_note, (self.form_panel.x + 24, self.form_panel.bottom - 24))
 
     def draw_match_section(self) -> None:
         section_rect = pygame.Rect(
@@ -906,7 +905,7 @@ class StudyGroupApp:
         header = self.small_font.render("Slot", True, ACCENT)
         self.screen.blit(header, (section_rect.x + 328, header_y))
 
-        rows = list(reversed(self.student_records[-5:]))
+        rows = list(reversed(self.student_records[-4:]))
         row_y = header_y + 24
 
         for record in rows:
