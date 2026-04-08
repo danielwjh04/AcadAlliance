@@ -76,16 +76,16 @@ class MatchingEngine:
 if __name__ == "__main__":
     
     mock_students = [
-        Student("Alice",   "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-        Student("Bob",     "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-        Student("Charlie", "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
-        Student("Diana",   "DSA1101", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-        Student("Eve",     "CS2040S", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
-        Student("Frank",   "MH1811",  {"Mon 6PM"},                         {"Concept understanding"}),
-        Student("Grace",   "CV2020",  {"Tue 6PM"},                         {"Tutorial Help"}),
-        Student("Heidi",   "CS2030",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
-        Student("Ivan",    "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
-        Student("Judy",    "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+        Student("Alice",   "CV1014", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+        Student("Bob",     "CV1014", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+        Student("Charlie", "CV1011", {"Tue 2PM", "Thu 2PM"},              {"Exam paper practice"}),
+        Student("Diana",   "CV1011", {"Tue 2PM", "Thu 2PM"},              {"Concept understanding"}),
+        Student("Eve",     "CV2020", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
+        Student("Frank",   "MH1811", {"Sat 9AM", "Mon 6PM"},              {"Concept understanding"}),
+        Student("Grace",   "CV2020", {"Thu 2PM"},                         {"Tutorial Help"}),
+        Student("Heidi",   "CV2002", {"Tue 6PM", "Wed 6PM"},              {"Exam paper practice"}),
+        Student("Ivan",    "CV2002", {"Tue 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
+        Student("Judy",    "MH1811", {"Sat 9AM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
     ]
 
     engine = MatchingEngine()

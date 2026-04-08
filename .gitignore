@@ -6,6 +6,10 @@ __pycache__/
 # Generated database and exports — recreated automatically at runtime
 students.xlsx
 study_groups.xlsx
+student_data.xlsx
+student_data_*.xlsx
+study_group_matches.xlsx
+study_group_matches_*.xlsx
 students.csv
 
 # Environment / secrets
