@@ -1,223 +1,440 @@
 """
-main.py  —  AcadAlliance Desktop Application
-CV1014 / AY25S2 Mini Project  —  Study Group Matching System (Theme P)
+Refactored Pygame frontend for the study group matching system.
 
-HOW TO RUN:
+Run with:
     python main.py
-
-DEPENDENCIES (install with: pip install pygame pandas openpyxl):
-    pygame      — graphical window, event loop, drawing
-    pandas      — Excel student database + export
-    openpyxl    — Excel (.xlsx) read/write backend used by pandas
-
-HOW engine.py IS CONNECTED:
-    Line 1  — `from engine import Student, MatchingEngine`
-    Every time the user clicks Submit, we build a Student object from the
-    input boxes and pass it to MatchingEngine.find_best_matches().
-    No changes to engine.py are required; this file is purely the UI layer.
-
-DATABASE:
-    students.xlsx is the single source of truth for all registered students.
-    It is created automatically with fake seed data on first run, and is
-    updated every time a new student submits their details.
-    Press E (or click Export) to write a sorted copy to study_groups.xlsx.
 """
 
-import os
 import sys
-import pygame
+from typing import Dict, List, Optional, Sequence, Tuple
+
 import pandas as pd
+import pygame
 
-# ── Import the matching engine written by the team ──────────────────────────
-# engine.py must be in the same folder as this file.
-# Student  : dataclass that holds one student's data
-# MatchingEngine : calculates compatibility scores and returns ranked matches
-from engine import Student, MatchingEngine
-
-# Python 3.8 compatibility — use typing module instead of built-in generics
-from typing import List, Tuple, Optional
+from engine import MatchingEngine, Student
 
 
-# ============================================================
-#  CONSTANTS
-# ============================================================
-
-WINDOW_W, WINDOW_H = 1280, 800
+WINDOW_WIDTH = 1240
+WINDOW_HEIGHT = 820
 FPS = 60
+EXPORT_FILE = "study_group_matches.xlsx"
 
-# ── Colour palette (R, G, B) ────────────────────────────────
-WHITE      = (255, 255, 255)
-BLACK      = (10,  10,  10)
-DARK_GREY  = (45,  45,  45)
-MID_GREY   = (130, 130, 130)
-LIGHT_GREY = (210, 210, 210)
-PANEL_BG   = (245, 247, 250)
-MAP_BG     = (215, 222, 230)
-BLUE       = (50,  115, 200)
-BLUE_DARK  = (30,   85, 160)
-GREEN      = (55,  175,  95)
-GREEN_DARK = (35,  140,  70)
-RED        = (210,  60,  60)
-ACCENT     = (255, 165,   0)   # orange — used for the map coordinate dot
+FONT_NAME = "segoeui"
 
-# ── Layout: left panel = map, right panel = controls ────────
-MAP_W     = 580                         # width of the map panel
-CTRL_X    = MAP_W + 12                  # left edge of the control panel
-CTRL_W    = WINDOW_W - CTRL_X - 12     # width of the control panel
-
-# ── Files ───────────────────────────────────────────────────
-DATABASE_FILE   = "students.xlsx"       # pandas Excel database — persists registrations
-EXPORT_FILE     = "study_groups.xlsx"   # sorted export written when user presses E
-
-# ── Table display ────────────────────────────────────────────
-TABLE_COL_WIDTHS = [160, 90, 175, 175]
-TABLE_HEADERS    = ["Name", "Course", "Available Times", "Objectives"]
-TABLE_ROW_H      = 24   # height of each row in the table
-TABLE_SCROLL_SPD = 3    # rows scrolled per mouse-wheel tick
+DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+OBJECTIVE_OPTIONS = [
+    "Concept understanding",
+    "Tutorial Help",
+    "Exam paper practice",
+]
 
 
-# ============================================================
-#  HELPER WIDGET: InputBox
-# ============================================================
+def build_time_options() -> List[str]:
+    options: List[str] = []
+    for hour in range(6, 23):
+        suffix = "AM" if hour < 12 else "PM"
+        display_hour = hour % 12 or 12
+        options.append(f"{display_hour}{suffix}")
+    return options
+
+
+TIME_OPTIONS = build_time_options()
+TIME_TO_ORDER = {label: index for index, label in enumerate(TIME_OPTIONS)}
+DAY_TO_ORDER = {label: index for index, label in enumerate(DAY_OPTIONS)}
+
+
+BACKGROUND = (243, 246, 251)
+PANEL = (255, 255, 255)
+PANEL_ALT = (248, 250, 253)
+TEXT = (31, 41, 55)
+TEXT_MUTED = (99, 115, 129)
+BORDER = (207, 216, 228)
+ACCENT = (46, 117, 184)
+ACCENT_DARK = (31, 90, 145)
+SUCCESS = (46, 125, 95)
+WARNING = (209, 140, 59)
+ERROR = (198, 70, 70)
+BUTTON_NEUTRAL = (109, 122, 138)
+CHECK_FILL = (66, 135, 245)
+HOVER = (230, 239, 251)
+OVERLAY_SHADOW = (218, 225, 236)
+
+
+def parse_time_label(label: str) -> int:
+    suffix = label[-2:]
+    hour = int(label[:-2])
+    if suffix == "AM":
+        return 0 if hour == 12 else hour
+    return 12 if hour == 12 else hour + 12
+
+
+def wrap_text(text: str, font: pygame.font.Font, max_width: int) -> List[str]:
+    if not text:
+        return []
+
+    words = text.split()
+    lines: List[str] = []
+    current = words[0]
+
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if font.size(candidate)[0] <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+
+    lines.append(current)
+    return lines
+
+
+def build_record(
+    name: str,
+    course: str,
+    day: str,
+    start_time: str,
+    end_time: str,
+    objectives: Sequence[str],
+) -> Dict[str, object]:
+    return {
+        "name": name,
+        "course": course.upper(),
+        "day": day,
+        "start_time": start_time,
+        "end_time": end_time,
+        "matching_slot": f"{day} {start_time}",
+        "objectives": list(objectives),
+    }
+
+
+def seed_records() -> List[Dict[str, object]]:
+    return [
+        build_record("Alice Tan", "CV1014", "Mon", "6PM", "8PM", ["Concept understanding"]),
+        build_record(
+            "Benjamin Lee",
+            "CV1014",
+            "Mon",
+            "6PM",
+            "9PM",
+            ["Concept understanding", "Tutorial Help"],
+        ),
+        build_record("Chloe Goh", "CV1014", "Wed", "7PM", "9PM", ["Exam paper practice"]),
+        build_record(
+            "Darren Koh",
+            "CV1014",
+            "Mon",
+            "6PM",
+            "7PM",
+            ["Tutorial Help", "Exam paper practice"],
+        ),
+        build_record("Eunice Lim", "CV1014", "Tue", "10AM", "12PM", ["Concept understanding"]),
+        build_record(
+            "Farah Noor",
+            "CV2020",
+            "Thu",
+            "2PM",
+            "4PM",
+            ["Concept understanding", "Tutorial Help"],
+        ),
+        build_record("Gabriel Ong", "CV2020", "Thu", "2PM", "5PM", ["Tutorial Help"]),
+        build_record("Hannah Teo", "CV2020", "Fri", "10AM", "12PM", ["Exam paper practice"]),
+        build_record("Isaac Chua", "DSA1101", "Tue", "6PM", "8PM", ["Concept understanding"]),
+        build_record(
+            "Joanna Sim",
+            "DSA1101",
+            "Tue",
+            "6PM",
+            "9PM",
+            ["Concept understanding", "Exam paper practice"],
+        ),
+        build_record("Kumar Raj", "MH1811", "Sat", "9AM", "11AM", ["Tutorial Help"]),
+        build_record(
+            "Li Wen",
+            "MH1811",
+            "Sat",
+            "9AM",
+            "12PM",
+            ["Concept understanding", "Tutorial Help"],
+        ),
+    ]
+
 
 class InputBox:
-    """
-    A single-line text input rendered entirely with Pygame primitives.
+    label_font: Optional[pygame.font.Font] = None
+    text_font: Optional[pygame.font.Font] = None
 
-    DECOMPOSITION — all text-entry logic is isolated here so the main
-    event loop only needs to forward events; it never handles raw
-    keystrokes itself.
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        label: str,
+        placeholder: str = "",
+        max_length: int = 32,
+    ) -> None:
+        if InputBox.label_font is None:
+            InputBox.label_font = pygame.font.SysFont(FONT_NAME, 14, bold=True)
+            InputBox.text_font = pygame.font.SysFont(FONT_NAME, 18)
 
-    Usage:
-        box = InputBox(x, y, width, height, label="Name", placeholder="...")
-        # inside the event loop:
-        box.handle_event(event)
-        # inside the draw call:
-        box.draw(screen)
-        # to read the value:
-        value = box.get_value()
-    """
-
-    # Shared font objects — created once when the first box is instantiated
-    _font_label: Optional[pygame.font.Font] = None
-    _font_text:  Optional[pygame.font.Font] = None
-
-    def __init__(self, x: int, y: int, w: int, h: int,
-                 label: str = "", placeholder: str = ""):
-        self.rect        = pygame.Rect(x, y, w, h)
-        self.label       = label
+        self.rect = pygame.Rect(x, y, width, height)
+        self.label = label
         self.placeholder = placeholder
-        self.text        = ""        # the string the user has typed so far
-        self.active      = False     # True when this box has keyboard focus
-
-        # Lazy-initialise shared fonts (pygame.font must be init'd first)
-        if InputBox._font_label is None:
-            InputBox._font_label = pygame.font.SysFont("segoeui", 14, bold=True)
-            InputBox._font_text  = pygame.font.SysFont("segoeui", 16)
-
-    # ── Event handling ───────────────────────────────────────
+        self.max_length = max_length
+        self.text = ""
+        self.active = False
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        """
-        Process one pygame event.
-
-        MOUSE click  → activate this box if the click lands inside it,
-                        deactivate it if the click is elsewhere.
-        KEYDOWN      → only act when this box is active (has focus).
-                        BACKSPACE deletes the last character.
-                        RETURN / TAB are intentionally ignored so they
-                        don't insert whitespace.
-                        Any other key appends event.unicode to self.text.
-        """
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            # collidepoint returns True if the click position is inside self.rect
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.active = self.rect.collidepoint(event.pos)
 
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_BACKSPACE:
-                # Remove the last character (slicing to [:-1] is safe on empty str)
                 self.text = self.text[:-1]
             elif event.key in (pygame.K_RETURN, pygame.K_TAB):
-                pass  # swallow these keys — they are handled at app level
-            else:
-                # event.unicode is the printable character for this key press,
-                # already accounting for shift / caps lock / locale.
-                self.text += event.unicode
-
-    # ── Rendering ────────────────────────────────────────────
+                return
+            elif event.unicode and event.unicode.isprintable():
+                if len(self.text) < self.max_length:
+                    self.text += event.unicode
 
     def draw(self, surface: pygame.Surface) -> None:
-        """Render the label above the box, then the box itself with its text."""
-        # Label sits 22 px above the box
-        if self.label:
-            label_surf = self._font_label.render(self.label, True, DARK_GREY)
-            surface.blit(label_surf, (self.rect.x, self.rect.y - 22))
+        label = self.label_font.render(self.label, True, TEXT)
+        surface.blit(label, (self.rect.x, self.rect.y - 24))
 
-        # Fill the box background
-        pygame.draw.rect(surface, WHITE, self.rect, border_radius=6)
+        pygame.draw.rect(surface, PANEL, self.rect, border_radius=12)
+        border_color = ACCENT if self.active else BORDER
+        pygame.draw.rect(surface, border_color, self.rect, 2, border_radius=12)
 
-        # Border: bright blue when focused, light grey when idle
-        border_col = BLUE if self.active else LIGHT_GREY
-        pygame.draw.rect(surface, border_col, self.rect, 2, border_radius=6)
+        value = self.text or self.placeholder
+        color = TEXT if self.text else TEXT_MUTED
+        text_surface = self.text_font.render(value, True, color)
+        text_y = self.rect.y + (self.rect.height - text_surface.get_height()) // 2
+        surface.blit(text_surface, (self.rect.x + 14, text_y))
 
-        # Render typed text, or the placeholder in grey if the box is empty
-        if self.text:
-            txt_surf = self._font_text.render(self.text, True, DARK_GREY)
-        else:
-            txt_surf = self._font_text.render(self.placeholder, True, MID_GREY)
-
-        # Vertically centre the text inside the box and add 8 px left padding
-        ty = self.rect.y + (self.rect.h - txt_surf.get_height()) // 2
-        surface.blit(txt_surf, (self.rect.x + 8, ty))
-
-    # ── Value access ─────────────────────────────────────────
+        if self.active:
+            caret_x = self.rect.x + 14 + text_surface.get_width() + 2
+            caret_top = self.rect.y + 11
+            caret_bottom = self.rect.bottom - 11
+            pygame.draw.line(surface, ACCENT, (caret_x, caret_top), (caret_x, caret_bottom), 2)
 
     def get_value(self) -> str:
-        """Return the current text with leading/trailing whitespace removed."""
         return self.text.strip()
 
     def clear(self) -> None:
-        self.text   = ""
+        self.text = ""
         self.active = False
 
 
-# ============================================================
-#  HELPER WIDGET: Button
-# ============================================================
+class Checkbox:
+    label_font: Optional[pygame.font.Font] = None
 
-class Button:
-    """
-    A clickable rectangle with a text label and a hover colour change.
+    def __init__(self, x: int, y: int, label: str) -> None:
+        if Checkbox.label_font is None:
+            Checkbox.label_font = pygame.font.SysFont(FONT_NAME, 17)
 
-    Usage:
-        btn = Button(x, y, w, h, "Label")
-        btn.draw(screen)
-        if btn.is_clicked(event):
-            do_something()
-    """
+        self.box_rect = pygame.Rect(x, y, 20, 20)
+        self.label = label
+        self.checked = False
 
-    _font: Optional[pygame.font.Font] = None
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return False
 
-    def __init__(self, x: int, y: int, w: int, h: int, text: str,
-                 color: tuple = BLUE, hover_color: tuple = BLUE_DARK):
-        self.rect        = pygame.Rect(x, y, w, h)
-        self.text        = text
-        self.color       = color
-        self.hover_color = hover_color
-
-        if Button._font is None:
-            Button._font = pygame.font.SysFont("segoeui", 16, bold=True)
+        click_rect = pygame.Rect(
+            self.box_rect.x,
+            self.box_rect.y,
+            self.box_rect.width + 10 + self.label_font.size(self.label)[0],
+            self.box_rect.height,
+        )
+        if click_rect.collidepoint(event.pos):
+            self.checked = not self.checked
+            return True
+        return False
 
     def draw(self, surface: pygame.Surface) -> None:
-        hovered = self.rect.collidepoint(pygame.mouse.get_pos())
-        fill    = self.hover_color if hovered else self.color
-        pygame.draw.rect(surface, fill, self.rect, border_radius=8)
-        txt  = self._font.render(self.text, True, WHITE)
-        pos  = txt.get_rect(center=self.rect.center)
-        surface.blit(txt, pos)
+        pygame.draw.rect(surface, PANEL, self.box_rect, border_radius=4)
+        pygame.draw.rect(surface, BORDER, self.box_rect, 2, border_radius=4)
+
+        if self.checked:
+            inset = self.box_rect.inflate(-6, -6)
+            pygame.draw.rect(surface, CHECK_FILL, inset, border_radius=3)
+            pygame.draw.line(
+                surface,
+                PANEL,
+                (inset.x + 3, inset.y + inset.height // 2),
+                (inset.x + inset.width // 2, inset.bottom - 4),
+                2,
+            )
+            pygame.draw.line(
+                surface,
+                PANEL,
+                (inset.x + inset.width // 2, inset.bottom - 4),
+                (inset.right - 3, inset.y + 3),
+                2,
+            )
+
+        label_surface = self.label_font.render(self.label, True, TEXT)
+        surface.blit(label_surface, (self.box_rect.right + 10, self.box_rect.y - 1))
+
+    def clear(self) -> None:
+        self.checked = False
+
+
+class Dropdown:
+    label_font: Optional[pygame.font.Font] = None
+    text_font: Optional[pygame.font.Font] = None
+
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        label: str,
+        options: Sequence[str],
+        placeholder: str,
+    ) -> None:
+        if Dropdown.label_font is None:
+            Dropdown.label_font = pygame.font.SysFont(FONT_NAME, 14, bold=True)
+            Dropdown.text_font = pygame.font.SysFont(FONT_NAME, 17)
+
+        self.rect = pygame.Rect(x, y, width, height)
+        self.label = label
+        self.options = list(options)
+        self.placeholder = placeholder
+        self.selected: Optional[str] = None
+        self.is_open = False
+        self.option_height = 26
+        self.hovered_index = -1
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEMOTION and self.is_open:
+            self.hovered_index = -1
+            for index, option_rect in enumerate(self.option_rects()):
+                if option_rect.collidepoint(event.pos):
+                    self.hovered_index = index
+                    break
+
+    def handle_click(self, position: Tuple[int, int]) -> bool:
+        if self.rect.collidepoint(position):
+            self.is_open = not self.is_open
+            self.hovered_index = -1
+            return True
+
+        if self.is_open:
+            for index, option_rect in enumerate(self.option_rects()):
+                if option_rect.collidepoint(position):
+                    self.selected = self.options[index]
+                    self.is_open = False
+                    self.hovered_index = -1
+                    return True
+            self.close()
+
+        return False
+
+    def option_rects(self) -> List[pygame.Rect]:
+        return [
+            pygame.Rect(
+                self.rect.x,
+                self.rect.bottom + index * self.option_height,
+                self.rect.width,
+                self.option_height,
+            )
+            for index, _ in enumerate(self.options)
+        ]
+
+    def draw(self, surface: pygame.Surface) -> None:
+        label = self.label_font.render(self.label, True, TEXT)
+        surface.blit(label, (self.rect.x, self.rect.y - 24))
+
+        pygame.draw.rect(surface, PANEL, self.rect, border_radius=12)
+        border_color = ACCENT if self.is_open else BORDER
+        pygame.draw.rect(surface, border_color, self.rect, 2, border_radius=12)
+
+        value = self.selected or self.placeholder
+        color = TEXT if self.selected else TEXT_MUTED
+        text_surface = self.text_font.render(value, True, color)
+        text_y = self.rect.y + (self.rect.height - text_surface.get_height()) // 2
+        surface.blit(text_surface, (self.rect.x + 14, text_y))
+
+        arrow_center_x = self.rect.right - 18
+        arrow_center_y = self.rect.y + self.rect.height // 2
+        points = [
+            (arrow_center_x - 6, arrow_center_y - 3),
+            (arrow_center_x + 6, arrow_center_y - 3),
+            (arrow_center_x, arrow_center_y + 4),
+        ]
+        pygame.draw.polygon(surface, TEXT_MUTED, points)
+
+    def draw_overlay(self, surface: pygame.Surface) -> None:
+        if not self.is_open:
+            return
+
+        option_rects = self.option_rects()
+        if not option_rects:
+            return
+
+        overlay_rect = pygame.Rect(
+            self.rect.x,
+            self.rect.bottom + 4,
+            self.rect.width,
+            self.option_height * len(self.options),
+        )
+        shadow_rect = overlay_rect.move(0, 4)
+        pygame.draw.rect(surface, OVERLAY_SHADOW, shadow_rect, border_radius=12)
+        pygame.draw.rect(surface, PANEL, overlay_rect, border_radius=12)
+        pygame.draw.rect(surface, BORDER, overlay_rect, 2, border_radius=12)
+
+        for index, option_rect in enumerate(option_rects):
+            draw_rect = option_rect.move(0, 4)
+            fill = HOVER if index == self.hovered_index or self.options[index] == self.selected else PANEL
+            pygame.draw.rect(surface, fill, draw_rect)
+            option_text = self.text_font.render(self.options[index], True, TEXT)
+            surface.blit(option_text, (draw_rect.x + 14, draw_rect.y + 4))
+
+        pygame.draw.rect(surface, BORDER, overlay_rect, 2, border_radius=12)
+
+    def get_value(self) -> str:
+        return self.selected or ""
+
+    def close(self) -> None:
+        self.is_open = False
+        self.hovered_index = -1
+
+    def clear(self) -> None:
+        self.selected = None
+        self.close()
+
+
+class Button:
+    font: Optional[pygame.font.Font] = None
+
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        label: str,
+        color: Tuple[int, int, int],
+        hover_color: Tuple[int, int, int],
+    ) -> None:
+        if Button.font is None:
+            Button.font = pygame.font.SysFont(FONT_NAME, 17, bold=True)
+
+        self.rect = pygame.Rect(x, y, width, height)
+        self.label = label
+        self.color = color
+        self.hover_color = hover_color
+
+    def draw(self, surface: pygame.Surface) -> None:
+        fill = self.hover_color if self.rect.collidepoint(pygame.mouse.get_pos()) else self.color
+        pygame.draw.rect(surface, fill, self.rect, border_radius=12)
+        label_surface = self.font.render(self.label, True, PANEL)
+        label_rect = label_surface.get_rect(center=self.rect.center)
+        surface.blit(label_surface, label_rect)
 
     def is_clicked(self, event: pygame.event.Event) -> bool:
-        """Return True only on a left-button-down event inside the button."""
         return (
             event.type == pygame.MOUSEBUTTONDOWN
             and event.button == 1
@@ -225,598 +442,539 @@ class Button:
         )
 
 
-# ============================================================
-#  MAIN APPLICATION
-# ============================================================
-
 class StudyGroupApp:
-    """
-    Top-level application class.
-
-    ABSTRACTION — the outside world (main()) only calls app.run().
-    All Pygame lifecycle details (init, event loop, render, quit) are
-    hidden inside this class.
-
-    DECOMPOSITION — each responsibility lives in its own method:
-        _build_ui()          creates all widgets
-        handle_events()      routes pygame events to the right handler
-        _on_submit()         validates input → builds Student → runs engine
-        _export_to_excel()   pandas export
-        draw()               master render, delegates to sub-draw methods
-    """
-
-    def __init__(self):
+    def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
-        pygame.display.set_caption("AcadAlliance — Study Group Matcher  |  CV1014")
-        self.clock  = pygame.time.Clock()
+        pygame.display.set_caption("Study Group Matching System")
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.clock = pygame.time.Clock()
 
-        # ── Fonts ───────────────────────────────────────────
-        self.font_title  = pygame.font.SysFont("segoeui", 24, bold=True)
-        self.font_body   = pygame.font.SysFont("segoeui", 15)
-        self.font_small  = pygame.font.SysFont("segoeui", 13)
-        self.font_mono   = pygame.font.SysFont("consolas", 13)
+        self.title_font = pygame.font.SysFont(FONT_NAME, 32, bold=True)
+        self.subtitle_font = pygame.font.SysFont(FONT_NAME, 18)
+        self.section_font = pygame.font.SysFont(FONT_NAME, 20, bold=True)
+        self.body_font = pygame.font.SysFont(FONT_NAME, 17)
+        self.small_font = pygame.font.SysFont(FONT_NAME, 14)
 
-        # ── Matching engine (imported from engine.py) ────────
-        # MatchingEngine is instantiated once and reused for every submission.
-        # Weights: time overlap counts for 70%, objective overlap for 30%.
-        self.engine = MatchingEngine(time_weight=0.7, objective_weight=0.3)
-
-        # ── Student pool ─────────────────────────────────────
-        # PATTERN RECOGNITION — the pool grows with every new submission,
-        # so each new student is automatically visible to future searchers.
-        # We seed it from a CSV file so data persists between app sessions.
-        self.student_pool: List[Student] = self._load_database()
-
-        # ── Match results (populated after Submit) ───────────
+        self.engine = MatchingEngine()
+        self.student_records = seed_records()
+        self.student_pool = [self.record_to_student(record) for record in self.student_records]
         self.match_results: List[Tuple[Student, float]] = []
-        self.last_student: Optional[Student] = None
+        self.last_submission: Optional[Dict[str, object]] = None
+        self.status_message = "Fill in the form and click Submit to find compatible study partners."
+        self.status_color = TEXT_MUTED
 
-        # ── Database table view state ─────────────────────────
-        self.table_scroll = 0   # how many rows have been scrolled down
-
-        # ── Status bar ───────────────────────────────────────
-        self.status_msg   = "Enter your details and click Submit to find study partners."
-        self.status_color = MID_GREY
-
-        # Build all widgets
+        self.form_panel = pygame.Rect(36, 92, 520, 692)
+        self.results_panel = pygame.Rect(584, 92, 620, 692)
         self._build_ui()
 
-    # ──────────────────────────────────────────────────────────
-    #  DATABASE (pandas)
-    # ──────────────────────────────────────────────────────────
-
-    def _load_database(self) -> List[Student]:
-        """
-        Read students.xlsx with pandas on startup.
-        If the file does not exist, create it with fake seed data and save it
-        so the Excel file is always present and viewable from the first run.
-
-        Using pandas here satisfies the assignment's data-processing requirement:
-        the DataFrame gives us searching and sorting for free.
-        """
-        if os.path.exists(DATABASE_FILE):
-            df = pd.read_excel(DATABASE_FILE)
-            pool = []
-            for _, row in df.iterrows():
-                # Split the stored comma-separated strings back into sets
-                times = {t.strip() for t in str(row["time_slots"]).split(",") if t.strip()}
-                objs  = {o.strip() for o in str(row["objectives"]).split(",")  if o.strip()}
-                pool.append(Student(
-                    name=str(row["name"]),
-                    course=str(row["course"]),
-                    time_slots=times,
-                    objectives=objs,
-                ))
-            return pool
-
-        # ── Seed data ────────────────────────────────────────────────────────
-        # Used the first time the app runs (no Excel file exists yet).
-        # 20 fake students across 5 NTU courses with varied times and objectives
-        # so the matching engine has enough data to produce meaningful results.
-        seed = [
-            # CV1014 — Introduction to Computational Thinking
-            Student("Alice Tan",     "CV1014",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-            Student("Bob Lim",       "CV1014",  {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-            Student("Charlie Ng",    "CV1014",  {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
-            Student("Eve Wong",      "CV1014",  {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
-            Student("Ivan Goh",      "CV1014",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            Student("Karen Yeo",     "CV1014",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Tutorial Help"}),
-            Student("Marcus Lee",    "CV1014",  {"Mon 6PM", "Fri 6PM"},              {"Exam paper practice"}),
-            Student("Nina Chua",     "CV1014",  {"Wed 6PM", "Thu 6PM"},              {"Concept understanding"}),
-            # MH1811 — Calculus
-            Student("Diana Ho",      "MH1811",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-            Student("Judy Koh",      "MH1811",  {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-            Student("Omar Rashid",   "MH1811",  {"Tue 6PM", "Sat 10AM"},             {"Tutorial Help", "Exam paper practice"}),
-            Student("Priya Nair",    "MH1811",  {"Wed 6PM", "Fri 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            # CV2020 — Engineering Mechanics
-            Student("Frank Ong",     "CV2020",  {"Mon 6PM"},                         {"Concept understanding"}),
-            Student("Grace Tan",     "CV2020",  {"Mon 6PM", "Wed 6PM"},              {"Tutorial Help"}),
-            Student("Henry Sim",     "CV2020",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            # MH1812 — Discrete Mathematics
-            Student("Heidi Chan",    "MH1812",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
-            Student("Leo Tay",       "MH1812",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Tutorial Help"}),
-            Student("Megan Foo",     "MH1812",  {"Tue 6PM", "Thu 6PM"},              {"Tutorial Help"}),
-            # CV1011 — Fundamentals of Civil and Environmental Engineering
-            Student("Samuel Liew",   "CV1011",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            Student("Rachel Koh",    "CV1011",  {"Tue 6PM"},                         {"Tutorial Help"}),
-        ]
-        # Write seed data to Excel immediately so the file exists from first run
-        self._write_pool_to_excel(seed)
-        return seed
-
-    def _write_pool_to_excel(self, pool: List[Student]) -> None:
-        """
-        Overwrite students.xlsx with the entire pool.
-        Called both when seeding on first run and after each new registration.
-        Excel does not support row-level appending, so we rewrite the whole file.
-        """
-        rows = [{
-            "name":       s.name,
-            "course":     s.course,
-            "time_slots": ", ".join(sorted(s.time_slots)),
-            "objectives": ", ".join(sorted(s.objectives)),
-        } for s in pool]
-        pd.DataFrame(rows).to_excel(DATABASE_FILE, index=False)
-
-    def _save_to_database(self) -> None:
-        """
-        Persist the current student pool to students.xlsx.
-        We rewrite the entire file because Excel does not support append mode.
-        """
-        self._write_pool_to_excel(self.student_pool)
-
-    def _export_to_excel(self) -> None:
-        """
-        Write the entire student pool to study_groups.xlsx with pandas.
-
-        ALGORITHM DESIGN — before exporting we sort the pool by course then
-        name using DataFrame.sort_values(), producing a neatly ordered sheet.
-
-        Keyboard shortcut: press E at any time to trigger this.
-        """
-        if not self.student_pool:
-            self._set_status("Nothing to export — no students registered yet.", RED)
-            return
-
-        rows = []
-        for s in self.student_pool:
-            rows.append({
-                "Name":            s.name,
-                "Course":          s.course,
-                "Available Times": ", ".join(sorted(s.time_slots)),
-                "Objectives":      ", ".join(sorted(s.objectives)),
-            })
-
-        df = pd.DataFrame(rows)
-        # Sort by course first, then alphabetically by name — demonstrates sorting
-        df = df.sort_values(by=["Course", "Name"]).reset_index(drop=True)
-        df.to_excel(EXPORT_FILE, index=False)
-        self._set_status(
-            f"Exported {len(rows)} student(s) to {EXPORT_FILE}  (press E to refresh)",
-            GREEN
-        )
-
-    # ──────────────────────────────────────────────────────────
-    #  UI CONSTRUCTION
-    # ──────────────────────────────────────────────────────────
-
     def _build_ui(self) -> None:
-        """
-        Instantiate every widget and calculate its screen position.
+        left = self.form_panel.x + 24
+        top = self.form_panel.y + 90
+        full_width = self.form_panel.width - 48
+        field_height = 46
 
-        DECOMPOSITION — widget creation is separated from the event loop
-        and the render loop.  Each widget knows how to draw and handle
-        its own events; this method is the wiring.
-        """
-        cx = CTRL_X        # left edge of the control panel
-        w  = CTRL_W - 4    # usable width inside the panel
-        y  = 90            # running vertical cursor (starts below the title)
-
-        # ── Four input boxes ─────────────────────────────────
-        # Each box is 38 px tall; label sits 22 px above it.
-        # Vertical gap between boxes: 30 px after the box itself.
-
-        self.box_name = InputBox(
-            cx, y + 22, w, 38,
-            label="Full Name",
-            placeholder="e.g. John Tan"
+        self.first_name_box = InputBox(
+            left,
+            top,
+            220,
+            field_height,
+            "First Name",
+            "Alicia",
+            max_length=24,
         )
-        y += 80
-
-        self.box_course = InputBox(
-            cx, y + 22, w, 38,
-            label="Module Code",
-            placeholder="e.g. CV1014"
+        self.last_name_box = InputBox(
+            left + 240,
+            top,
+            220,
+            field_height,
+            "Last Name",
+            "Tan",
+            max_length=24,
         )
-        y += 80
-
-        self.box_times = InputBox(
-            cx, y + 22, w, 38,
-            label="Available Times  (comma-separated)",
-            placeholder="Mon 6PM, Wed 6PM, Fri 6PM"
+        self.course_box = InputBox(
+            left,
+            top + 90,
+            full_width,
+            field_height,
+            "Module Code",
+            "CV1014",
+            max_length=12,
         )
-        y += 80
 
-        self.box_objectives = InputBox(
-            cx, y + 22, w, 38,
-            label="Learning Objectives  (comma-separated)",
-            placeholder="Concept understanding, Tutorial Help"
+        dropdown_y = top + 180
+        dropdown_width = 141
+        dropdown_gap = 18
+        self.day_dropdown = Dropdown(
+            left,
+            dropdown_y,
+            dropdown_width,
+            field_height,
+            "Day",
+            DAY_OPTIONS,
+            "Select day",
         )
-        y += 80
+        self.start_dropdown = Dropdown(
+            left + dropdown_width + dropdown_gap,
+            dropdown_y,
+            dropdown_width,
+            field_height,
+            "Start Time",
+            TIME_OPTIONS,
+            "Select start",
+        )
+        self.end_dropdown = Dropdown(
+            left + (dropdown_width + dropdown_gap) * 2,
+            dropdown_y,
+            dropdown_width,
+            field_height,
+            "End Time",
+            TIME_OPTIONS,
+            "Select end",
+        )
 
-        # Keep all boxes in a list so we can forward events with one loop
-        self.all_boxes = [
-            self.box_name,
-            self.box_course,
-            self.box_times,
-            self.box_objectives,
+        checkbox_y = dropdown_y + 96
+        checkbox_gap = 36
+        self.checkboxes = [
+            Checkbox(left, checkbox_y, OBJECTIVE_OPTIONS[0]),
+            Checkbox(left, checkbox_y + checkbox_gap, OBJECTIVE_OPTIONS[1]),
+            Checkbox(left, checkbox_y + checkbox_gap * 2, OBJECTIVE_OPTIONS[2]),
         ]
 
-        # ── Buttons ──────────────────────────────────────────
-        half = (w - 8) // 2
-        self.btn_submit = Button(cx,            y, half, 42, "Submit & Match",
-                                  color=BLUE, hover_color=BLUE_DARK)
-        self.btn_clear  = Button(cx + half + 8, y, half, 42, "Clear Fields",
-                                  color=(160, 70, 70), hover_color=(130, 45, 45))
-        self.btn_export = Button(cx,            y + 52, w, 38, "Export to Excel  [E]",
-                                  color=GREEN, hover_color=GREEN_DARK)
-
-        # y position where the status line and results begin
-        self.status_y  = y + 102
-        self.results_y = y + 128
-
-    # ──────────────────────────────────────────────────────────
-    #  EVENT LOOP
-    # ──────────────────────────────────────────────────────────
-
-    def handle_events(self) -> None:
-        """
-        Drain the pygame event queue and dispatch each event.
-
-        THE EVENT LOOP EXPLAINED:
-        pygame.event.get() returns every event that occurred since the
-        last call (mouse moves, key presses, window close, etc.).
-        We iterate over them one by one:
-
-          1. QUIT           → clean shutdown
-          2. KEYDOWN        → global hotkeys (E = export, ESC = quit),
-                              then each InputBox gets the same event so
-                              the focused one can consume the keystroke.
-          3. MOUSEBUTTONDOWN→ check whether the click hit the map area,
-                              then let InputBox widgets toggle focus,
-                              then check Submit / Clear / Export buttons.
-
-        Importantly, we pass EVERY event to EVERY input box.
-        Each box internally checks whether it is active before acting,
-        so there is no risk of two boxes receiving the same keystroke.
-        """
-        for event in pygame.event.get():
-
-            # ── 1. Window close ──────────────────────────────
-            if event.type == pygame.QUIT:
-                self._quit()
-
-            # ── 2. Keyboard ──────────────────────────────────
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_e:
-                    # 'E' triggers the pandas Excel export from anywhere
-                    self._export_to_excel()
-                elif event.key == pygame.K_ESCAPE:
-                    self._quit()
-
-            # Forward every event to every input box.
-            # Each box's handle_event() checks internally whether it is
-            # active before processing keystrokes.
-            for box in self.all_boxes:
-                box.handle_event(event)
-
-            # ── 3. Mouse clicks ──────────────────────────────
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if self.btn_submit.is_clicked(event):
-                    self._on_submit()
-                if self.btn_clear.is_clicked(event):
-                    self._on_clear()
-                if self.btn_export.is_clicked(event):
-                    self._export_to_excel()
-
-            # ── 4. Mouse wheel: scroll the database table ─────
-            if event.type == pygame.MOUSEWHEEL:
-                max_scroll = max(0, len(self.student_pool) - 1)
-                self.table_scroll = max(0, min(
-                    self.table_scroll - event.y * TABLE_SCROLL_SPD,
-                    max_scroll
-                ))
-
-    # ──────────────────────────────────────────────────────────
-    #  SUBMIT HANDLER  (UI → engine bridge)
-    # ──────────────────────────────────────────────────────────
-
-    def _on_submit(self) -> None:
-        """
-        Read all input boxes, validate, build a Student, run the engine.
-
-        THIS IS WHERE engine.py IS HOOKED UP:
-            1. We parse the raw strings from the input boxes.
-            2. We construct a Student dataclass (defined in engine.py).
-            3. We call engine.find_best_matches(student, pool) — this
-               returns List[Tuple[Student, float]] sorted best-first.
-            4. We store the results; the draw() call renders them.
-
-        ALGORITHM DESIGN — validation before computation:
-            - name and course must be non-empty (hard requirement).
-            - at least one time slot must be provided, because the engine
-              immediately returns 0.0 for any pair with no shared slots.
-        """
-        name      = self.box_name.get_value()
-        course    = self.box_course.get_value().upper()
-        times_raw = self.box_times.get_value()
-        objs_raw  = self.box_objectives.get_value()
-
-        # ── Validation ───────────────────────────────────────
-        if not name:
-            self._set_status("Please enter your name.", RED); return
-        if not course:
-            self._set_status("Please enter your module code.", RED); return
-        if not times_raw:
-            self._set_status("Please enter at least one available time slot.", RED); return
-
-        # ── Parse comma-separated strings into sets ──────────
-        # The engine expects Set[str], e.g. {"Mon 6PM", "Wed 6PM"}
-        time_slots = {t.strip() for t in times_raw.split(",") if t.strip()}
-        objectives = {o.strip() for o in objs_raw.split(",")  if o.strip()}
-
-        # ── Build Student (from engine.py) ───────────────────
-        new_student = Student(
-            name=name,
-            course=course,
-            time_slots=time_slots,
-            objectives=objectives,
+        button_y = checkbox_y + checkbox_gap * 3 + 24
+        self.submit_button = Button(left, button_y, 132, 46, "Submit", ACCENT, ACCENT_DARK)
+        self.clear_button = Button(
+            left + 146,
+            button_y,
+            108,
+            46,
+            "Clear",
+            BUTTON_NEUTRAL,
+            TEXT_MUTED,
+        )
+        self.export_button = Button(
+            left + 268,
+            button_y,
+            192,
+            46,
+            "Export to Excel",
+            SUCCESS,
+            (38, 107, 80),
         )
 
-        # ── Add to pool & persist ────────────────────────────
-        self.student_pool.append(new_student)
-        self._save_to_database()
-        self.last_student = new_student
+        self.input_boxes = [self.first_name_box, self.last_name_box, self.course_box]
+        self.dropdowns = [self.day_dropdown, self.start_dropdown, self.end_dropdown]
 
-        # ── Run the matching engine ──────────────────────────
-        # find_best_matches() skips the student themselves (name equality check)
-        # and only returns pairs with score > 0 (same course + shared time).
-        self.match_results = self.engine.find_best_matches(
-            new_student, self.student_pool, top_n=3
+    def record_to_student(self, record: Dict[str, object]) -> Student:
+        return Student(
+            name=str(record["name"]),
+            course=str(record["course"]),
+            time_slots={str(record["matching_slot"])},
+            objectives=set(record["objectives"]),
         )
 
-        if self.match_results:
-            self._set_status(
-                f"Found {len(self.match_results)} match(es) for {name}!",
-                GREEN
-            )
-        else:
-            self._set_status(
-                f"{name} added to pool. No matches yet — be the first in your course!",
-                ACCENT
+    def build_export_frame(self) -> pd.DataFrame:
+        rows = []
+        for record in self.student_records:
+            rows.append(
+                {
+                    "Name": record["name"],
+                    "Module Code": record["course"],
+                    "Day": record["day"],
+                    "Start Time": record["start_time"],
+                    "End Time": record["end_time"],
+                    "Matching Slot": record["matching_slot"],
+                    "Objectives": ", ".join(record["objectives"]),
+                }
             )
 
-    def _on_clear(self) -> None:
-        """Reset all input boxes and clear the results panel."""
-        for box in self.all_boxes:
-            box.clear()
-        self.match_results = []
-        self.last_student  = None
-        self._set_status("Fields cleared.", MID_GREY)
+        frame = pd.DataFrame(rows)
+        if frame.empty:
+            return frame
 
-    def _set_status(self, msg: str, color: tuple) -> None:
-        self.status_msg   = msg
+        frame["_day_order"] = frame["Day"].map(DAY_TO_ORDER)
+        frame["_start_order"] = frame["Start Time"].map(TIME_TO_ORDER)
+        frame = frame.sort_values(
+            by=["Module Code", "_day_order", "_start_order", "Name"]
+        ).drop(columns=["_day_order", "_start_order"])
+        return frame
+
+    def set_status(self, message: str, color: Tuple[int, int, int]) -> None:
+        self.status_message = message
         self.status_color = color
 
-    # ──────────────────────────────────────────────────────────
-    #  RENDER
-    # ──────────────────────────────────────────────────────────
+    def close_other_dropdowns(self, keep_open: Dropdown) -> None:
+        for dropdown in self.dropdowns:
+            if dropdown is not keep_open:
+                dropdown.close()
+
+    def close_all_dropdowns(self) -> None:
+        for dropdown in self.dropdowns:
+            dropdown.close()
+
+    def deactivate_inputs(self) -> None:
+        for box in self.input_boxes:
+            box.active = False
+
+    def any_input_active(self) -> bool:
+        return any(box.active for box in self.input_boxes)
+
+    def handle_submit(self) -> None:
+        first_name = self.first_name_box.get_value()
+        last_name = self.last_name_box.get_value()
+        course = self.course_box.get_value().upper()
+        day = self.day_dropdown.get_value()
+        start_time = self.start_dropdown.get_value()
+        end_time = self.end_dropdown.get_value()
+        objectives = [checkbox.label for checkbox in self.checkboxes if checkbox.checked]
+
+        if not first_name:
+            self.set_status("Please enter a first name.", ERROR)
+            return
+        if not last_name:
+            self.set_status("Please enter a last name.", ERROR)
+            return
+        if not course:
+            self.set_status("Please enter a module code.", ERROR)
+            return
+        if not day or not start_time or not end_time:
+            self.set_status("Please select day, start time, and end time.", ERROR)
+            return
+        if parse_time_label(end_time) <= parse_time_label(start_time):
+            self.set_status("End time must be later than the start time.", ERROR)
+            return
+        if not objectives:
+            self.set_status("Please choose at least one learning objective.", ERROR)
+            return
+
+        full_name = f"{first_name} {last_name}".strip()
+        record = build_record(full_name, course, day, start_time, end_time, objectives)
+        student = self.record_to_student(record)
+
+        self.match_results = self.engine.find_best_matches(student, self.student_pool, top_n=3)
+        self.student_records.append(record)
+        self.student_pool.append(student)
+        self.last_submission = record
+
+        if self.match_results:
+            self.set_status(
+                f"Found {len(self.match_results)} match(es) for {full_name}.",
+                SUCCESS,
+            )
+        else:
+            self.set_status(
+                f"{full_name} was added to the pool. No compatible matches yet.",
+                WARNING,
+            )
+
+    def clear_form(self) -> None:
+        for box in self.input_boxes:
+            box.clear()
+        for dropdown in self.dropdowns:
+            dropdown.clear()
+        for checkbox in self.checkboxes:
+            checkbox.clear()
+
+        self.match_results = []
+        self.last_submission = None
+        self.set_status("Form cleared. Ready for a new submission.", TEXT_MUTED)
+
+    def export_to_excel(self) -> None:
+        frame = self.build_export_frame()
+        frame.to_excel(EXPORT_FILE, index=False)
+        self.set_status(
+            f"Exported {len(frame)} student records to {EXPORT_FILE}.",
+            SUCCESS,
+        )
+
+    def handle_events(self) -> None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.quit()
+
+            for dropdown in self.dropdowns:
+                dropdown.handle_event(event)
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.quit()
+                if event.key == pygame.K_e and not self.any_input_active():
+                    self.export_to_excel()
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                handled_by_dropdown = False
+                for dropdown in reversed(self.dropdowns):
+                    if dropdown.handle_click(event.pos):
+                        handled_by_dropdown = True
+                        self.close_other_dropdowns(dropdown)
+                        self.deactivate_inputs()
+                        break
+
+                if handled_by_dropdown:
+                    continue
+
+                self.close_all_dropdowns()
+
+            for box in self.input_boxes:
+                box.handle_event(event)
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for checkbox in self.checkboxes:
+                    checkbox.handle_event(event)
+
+                if self.submit_button.is_clicked(event):
+                    self.handle_submit()
+                elif self.clear_button.is_clicked(event):
+                    self.clear_form()
+                elif self.export_button.is_clicked(event):
+                    self.export_to_excel()
+
+    def draw_background(self) -> None:
+        self.screen.fill(BACKGROUND)
+        pygame.draw.circle(self.screen, (230, 238, 248), (90, 70), 90)
+        pygame.draw.circle(self.screen, (233, 241, 250), (1140, 120), 120)
+        pygame.draw.rect(self.screen, (236, 242, 249), pygame.Rect(0, 0, WINDOW_WIDTH, 74))
+
+    def draw_panel(self, rect: pygame.Rect) -> None:
+        shadow = rect.move(0, 8)
+        pygame.draw.rect(self.screen, OVERLAY_SHADOW, shadow, border_radius=24)
+        pygame.draw.rect(self.screen, PANEL, rect, border_radius=24)
+        pygame.draw.rect(self.screen, BORDER, rect, 2, border_radius=24)
+
+    def draw_form_panel(self) -> None:
+        self.draw_panel(self.form_panel)
+
+        title = self.section_font.render("Student Details", True, TEXT)
+        self.screen.blit(title, (self.form_panel.x + 24, self.form_panel.y + 22))
+
+        note_lines = wrap_text(
+            "Matching uses Day + Start Time only. End Time is still collected for display and Excel export.",
+            self.small_font,
+            self.form_panel.width - 48,
+        )
+        for index, line in enumerate(note_lines):
+            line_surface = self.small_font.render(line, True, TEXT_MUTED)
+            self.screen.blit(
+                line_surface,
+                (self.form_panel.x + 24, self.form_panel.y + 52 + index * 18),
+            )
+
+        for box in self.input_boxes:
+            box.draw(self.screen)
+        for dropdown in self.dropdowns:
+            dropdown.draw(self.screen)
+
+        objective_label = self.section_font.render("Learning Objectives", True, TEXT)
+        self.screen.blit(objective_label, (self.form_panel.x + 24, self.form_panel.y + 388))
+        objective_hint = self.small_font.render(
+            "Tick every reason you want a study partner for.",
+            True,
+            TEXT_MUTED,
+        )
+        self.screen.blit(objective_hint, (self.form_panel.x + 24, self.form_panel.y + 414))
+
+        for checkbox in self.checkboxes:
+            checkbox.draw(self.screen)
+
+        self.submit_button.draw(self.screen)
+        self.clear_button.draw(self.screen)
+        self.export_button.draw(self.screen)
+
+        status_title = self.section_font.render("Status", True, TEXT)
+        self.screen.blit(status_title, (self.form_panel.x + 24, self.form_panel.y + 570))
+        status_lines = wrap_text(
+            self.status_message,
+            self.body_font,
+            self.form_panel.width - 48,
+        )
+        for index, line in enumerate(status_lines):
+            status_surface = self.body_font.render(line, True, self.status_color)
+            self.screen.blit(
+                status_surface,
+                (self.form_panel.x + 24, self.form_panel.y + 602 + index * 24),
+            )
+
+        hotkey_note = self.small_font.render(
+            "Hotkey: press E outside a text field to export to Excel.",
+            True,
+            TEXT_MUTED,
+        )
+        self.screen.blit(hotkey_note, (self.form_panel.x + 24, self.form_panel.bottom - 36))
+
+    def draw_match_section(self) -> None:
+        section_rect = pygame.Rect(
+            self.results_panel.x + 20,
+            self.results_panel.y + 78,
+            self.results_panel.width - 40,
+            354,
+        )
+        pygame.draw.rect(self.screen, PANEL_ALT, section_rect, border_radius=20)
+        pygame.draw.rect(self.screen, BORDER, section_rect, 2, border_radius=20)
+
+        title = self.section_font.render("Match Results", True, TEXT)
+        self.screen.blit(title, (section_rect.x + 20, section_rect.y + 18))
+
+        if not self.last_submission:
+            info_lines = wrap_text(
+                "Submit a student profile to see the top matches from the current pool. "
+                "The engine compares module code, the exact Day + Start Time string, and the selected objectives.",
+                self.body_font,
+                section_rect.width - 40,
+            )
+            for index, line in enumerate(info_lines):
+                line_surface = self.body_font.render(line, True, TEXT_MUTED)
+                self.screen.blit(line_surface, (section_rect.x + 20, section_rect.y + 68 + index * 26))
+            return
+
+        submission_lines = [
+            f"Submitted: {self.last_submission['name']} ({self.last_submission['course']})",
+            f"Matching slot: {self.last_submission['matching_slot']}",
+            f"Selected range: {self.last_submission['day']} {self.last_submission['start_time']} - {self.last_submission['end_time']}",
+            "Objectives: " + ", ".join(self.last_submission["objectives"]),
+        ]
+        for index, line in enumerate(submission_lines):
+            line_surface = self.small_font.render(line, True, TEXT_MUTED)
+            self.screen.blit(line_surface, (section_rect.x + 20, section_rect.y + 58 + index * 18))
+
+        if not self.match_results:
+            empty_surface = self.body_font.render(
+                "No compatible matches yet. Try another module or time slot.",
+                True,
+                WARNING,
+            )
+            self.screen.blit(empty_surface, (section_rect.x + 20, section_rect.y + 146))
+            return
+
+        user_objectives = set(self.last_submission["objectives"])
+        card_y = section_rect.y + 142
+
+        for index, (match, score) in enumerate(self.match_results, start=1):
+            card_rect = pygame.Rect(section_rect.x + 16, card_y, section_rect.width - 32, 62)
+            pygame.draw.rect(self.screen, PANEL, card_rect, border_radius=16)
+            pygame.draw.rect(self.screen, BORDER, card_rect, 2, border_radius=16)
+
+            shared_objectives = sorted(user_objectives.intersection(match.objectives))
+            slot = ", ".join(sorted(match.time_slots))
+
+            headline = self.body_font.render(
+                f"{index}. {match.name}  |  Score: {score:.2f}",
+                True,
+                TEXT,
+            )
+            self.screen.blit(headline, (card_rect.x + 16, card_rect.y + 10))
+
+            detail = self.small_font.render(
+                f"Module: {match.course}   Slot: {slot}",
+                True,
+                TEXT_MUTED,
+            )
+            self.screen.blit(detail, (card_rect.x + 16, card_rect.y + 34))
+
+            objective_text = ", ".join(shared_objectives) if shared_objectives else "No shared objectives"
+            objective_surface = self.small_font.render(
+                f"Shared objectives: {objective_text}",
+                True,
+                TEXT_MUTED,
+            )
+            self.screen.blit(objective_surface, (card_rect.x + 270, card_rect.y + 34))
+
+            card_y += 74
+
+    def draw_pool_section(self) -> None:
+        section_rect = pygame.Rect(
+            self.results_panel.x + 20,
+            self.results_panel.y + 454,
+            self.results_panel.width - 40,
+            210,
+        )
+        pygame.draw.rect(self.screen, PANEL_ALT, section_rect, border_radius=20)
+        pygame.draw.rect(self.screen, BORDER, section_rect, 2, border_radius=20)
+
+        title = self.section_font.render("Student Pool Snapshot", True, TEXT)
+        self.screen.blit(title, (section_rect.x + 20, section_rect.y + 18))
+        meta = self.small_font.render(
+            f"{len(self.student_records)} students available for matching",
+            True,
+            TEXT_MUTED,
+        )
+        self.screen.blit(meta, (section_rect.x + 20, section_rect.y + 46))
+
+        header_y = section_rect.y + 76
+        header = self.small_font.render("Name", True, ACCENT)
+        self.screen.blit(header, (section_rect.x + 20, header_y))
+        header = self.small_font.render("Module", True, ACCENT)
+        self.screen.blit(header, (section_rect.x + 238, header_y))
+        header = self.small_font.render("Slot", True, ACCENT)
+        self.screen.blit(header, (section_rect.x + 328, header_y))
+
+        rows = list(reversed(self.student_records[-5:]))
+        row_y = header_y + 24
+
+        for record in rows:
+            pygame.draw.line(
+                self.screen,
+                BORDER,
+                (section_rect.x + 18, row_y - 8),
+                (section_rect.right - 18, row_y - 8),
+                1,
+            )
+            name_surface = self.small_font.render(str(record["name"])[:24], True, TEXT)
+            module_surface = self.small_font.render(str(record["course"]), True, TEXT)
+            slot_surface = self.small_font.render(str(record["matching_slot"]), True, TEXT)
+            self.screen.blit(name_surface, (section_rect.x + 20, row_y))
+            self.screen.blit(module_surface, (section_rect.x + 238, row_y))
+            self.screen.blit(slot_surface, (section_rect.x + 328, row_y))
+            row_y += 28
+
+    def draw_results_panel(self) -> None:
+        self.draw_panel(self.results_panel)
+
+        title = self.section_font.render("Study Group Matching", True, TEXT)
+        self.screen.blit(title, (self.results_panel.x + 24, self.results_panel.y + 22))
+        subtitle = self.small_font.render(
+            "Custom Pygame widgets, exact slot matching, and Pandas export in one screen.",
+            True,
+            TEXT_MUTED,
+        )
+        self.screen.blit(subtitle, (self.results_panel.x + 24, self.results_panel.y + 52))
+
+        self.draw_match_section()
+        self.draw_pool_section()
+
+    def draw_header(self) -> None:
+        title = self.title_font.render("Study Group Matching System", True, TEXT)
+        self.screen.blit(title, (36, 22))
+
+        subtitle = self.subtitle_font.render(
+            "Refactored Pygame desktop app wired into MatchingEngine and Pandas export.",
+            True,
+            TEXT_MUTED,
+        )
+        self.screen.blit(subtitle, (36, 56))
 
     def draw(self) -> None:
-        """Master render — called once every frame. Delegates to sub-methods."""
-        self.screen.fill(PANEL_BG)
-        self._draw_database_table()
-        self._draw_divider()
-        self._draw_control_panel()
-        pygame.display.flip()   # push the completed frame to the screen
+        self.draw_background()
+        self.draw_header()
+        self.draw_form_panel()
+        self.draw_results_panel()
 
-    def _draw_database_table(self) -> None:
-        """
-        Render the student pool as a scrollable table in the left panel.
+        for dropdown in self.dropdowns:
+            dropdown.draw_overlay(self.screen)
 
-        ALGORITHM DESIGN — we compute a visible slice of self.student_pool
-        using the scroll offset, then draw each row with alternating shading
-        so the table is easy to read.
-
-        Scroll with the mouse wheel when the table is visible.
-        """
-        panel = pygame.Rect(10, 80, MAP_W - 20, WINDOW_H - 90)
-        pygame.draw.rect(self.screen, WHITE, panel, border_radius=8)
-        pygame.draw.rect(self.screen, LIGHT_GREY, panel, 2, border_radius=8)
-
-        # ── Header row ───────────────────────────────────────
-        header_rect = pygame.Rect(panel.x, panel.y, panel.w, TABLE_ROW_H)
-        pygame.draw.rect(self.screen, BLUE, header_rect,
-                         border_top_left_radius=8, border_top_right_radius=8)
-
-        x = panel.x + 6
-        for header, col_w in zip(TABLE_HEADERS, TABLE_COL_WIDTHS):
-            hdr_surf = self.font_small.render(header, True, WHITE)
-            self.screen.blit(hdr_surf, (x, panel.y + 5))
-            x += col_w
-
-        # ── Data rows ────────────────────────────────────────
-        # How many rows fit in the visible panel area
-        visible_rows = (panel.h - TABLE_ROW_H) // TABLE_ROW_H
-        start = int(self.table_scroll)
-        end   = min(start + visible_rows, len(self.student_pool))
-
-        for i, student in enumerate(self.student_pool[start:end]):
-            row_y    = panel.y + TABLE_ROW_H + i * TABLE_ROW_H
-            row_rect = pygame.Rect(panel.x, row_y, panel.w, TABLE_ROW_H)
-
-            # Alternate row background colour for readability
-            bg = (235, 240, 250) if i % 2 == 0 else WHITE
-            pygame.draw.rect(self.screen, bg, row_rect)
-
-            # Draw each cell, truncating text that is too wide for the column
-            cells = [
-                student.name,
-                student.course,
-                ", ".join(sorted(student.time_slots)),
-                ", ".join(sorted(student.objectives)),
-            ]
-            x = panel.x + 6
-            for cell, col_w in zip(cells, TABLE_COL_WIDTHS):
-                txt  = cell if len(cell) <= 22 else cell[:20] + "\u2026"
-                surf = self.font_small.render(txt, True, DARK_GREY)
-                self.screen.blit(surf, (x, row_y + 5))
-                x += col_w
-
-        # ── Footer ───────────────────────────────────────────
-        footer = self.font_small.render(
-            f"Showing {start + 1}\u2013{end} of {len(self.student_pool)} students"
-            "  |  scroll to see more",
-            True, MID_GREY
-        )
-        self.screen.blit(footer, (panel.x + 6, panel.bottom - 20))
-
-    def _draw_divider(self) -> None:
-        """Vertical separator line between the two panels."""
-        x = MAP_W + 6
-        pygame.draw.line(self.screen, LIGHT_GREY, (x, 10), (x, WINDOW_H - 10), 2)
-
-    def _draw_control_panel(self) -> None:
-        """Render everything on the right: title, input boxes, buttons, results."""
-        cx = CTRL_X
-
-        # ── Title ────────────────────────────────────────────
-        title = self.font_title.render("AcadAlliance", True, BLUE)
-        self.screen.blit(title, (cx, 12))
-
-        pool_count = self.font_small.render(
-            f"Study Group Matching System  |  {len(self.student_pool)} student(s) in pool",
-            True, MID_GREY
-        )
-        self.screen.blit(pool_count, (cx, 44))
-
-        # ── Input boxes ──────────────────────────────────────
-        for box in self.all_boxes:
-            box.draw(self.screen)
-
-        # ── Buttons ──────────────────────────────────────────
-        self.btn_submit.draw(self.screen)
-        self.btn_clear.draw(self.screen)
-        self.btn_export.draw(self.screen)
-
-        # ── Status message ───────────────────────────────────
-        status_surf = self.font_small.render(self.status_msg, True, self.status_color)
-        self.screen.blit(status_surf, (cx, self.status_y))
-
-        # ── Match results ────────────────────────────────────
-        if self.match_results and self.last_student:
-            self._draw_results(cx)
-        elif not self.match_results and self.last_student:
-            hint = self.font_small.render(
-                "No matches yet. More students need to register with the same course.",
-                True, MID_GREY
-            )
-            self.screen.blit(hint, (cx, self.results_y))
-
-    def _draw_results(self, cx: int) -> None:
-        """
-        Render the top-N match results as formatted text with score bars.
-
-        PATTERN RECOGNITION — the same rendering pattern (header, bar, details)
-        repeats for each match, so it is factored into one loop.
-        """
-        y = self.results_y
-        s = self.last_student
-
-        # Section header
-        hdr = self.font_body.render(
-            f"Top matches for {s.name}  ({s.course})", True, DARK_GREY
-        )
-        self.screen.blit(hdr, (cx, y))
-        y += 22
-
-        # Thin separator line
-        pygame.draw.line(
-            self.screen, LIGHT_GREY,
-            (cx, y), (cx + CTRL_W - 4, y), 1
-        )
-        y += 8
-
-        for rank, (match, score) in enumerate(self.match_results, start=1):
-            shared_times = sorted(s.time_slots  & match.time_slots)
-            shared_goals = sorted(s.objectives  & match.objectives)
-            pct          = int(score * 100)
-
-            # ── Rank line ────────────────────────────────────
-            name_txt = self.font_mono.render(
-                f"#{rank}  {match.name:<18}  {pct}%  compatible  |  {match.course}",
-                True, BLUE
-            )
-            self.screen.blit(name_txt, (cx, y))
-            y += 20
-
-            # ── Score bar ────────────────────────────────────
-            bar_total  = CTRL_W - 4
-            bar_filled = int(bar_total * score)
-            pygame.draw.rect(
-                self.screen, LIGHT_GREY,
-                pygame.Rect(cx, y, bar_total, 7), border_radius=3
-            )
-            pygame.draw.rect(
-                self.screen, GREEN,
-                pygame.Rect(cx, y, bar_filled, 7), border_radius=3
-            )
-            y += 14
-
-            # ── Detail lines ─────────────────────────────────
-            times_txt = self.font_small.render(
-                f"  Shared slots : {', '.join(shared_times) or 'none'}",
-                True, DARK_GREY
-            )
-            self.screen.blit(times_txt, (cx, y)); y += 18
-
-            goals_txt = self.font_small.render(
-                f"  Shared goals : {', '.join(shared_goals) or 'none'}",
-                True, DARK_GREY
-            )
-            self.screen.blit(goals_txt, (cx, y)); y += 26
-
-    # ──────────────────────────────────────────────────────────
-    #  MAIN LOOP
-    # ──────────────────────────────────────────────────────────
+        pygame.display.flip()
 
     def run(self) -> None:
-        """
-        The application's main loop — runs until the user closes the window.
-
-        Each iteration:
-          1. handle_events() — process all queued input
-          2. draw()          — render the current state to screen
-          3. clock.tick(FPS) — cap the frame rate to avoid burning CPU
-        """
         while True:
             self.handle_events()
             self.draw()
             self.clock.tick(FPS)
 
-    def _quit(self) -> None:
+    def quit(self) -> None:
         pygame.quit()
         sys.exit()
 
 
-# ============================================================
-#  ENTRY POINT
-# ============================================================
-
 def main() -> None:
-    app = StudyGroupApp()
-    app.run()
+    StudyGroupApp().run()
 
 
 if __name__ == "__main__":

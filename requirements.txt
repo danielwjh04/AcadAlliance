@@ -1,3 +1,5 @@
-pygame
 pandas
 openpyxl
+pygame
+# If pygame fails to install (Python 3.13+), use the community edition instead:
+# pip install pygame-ce
