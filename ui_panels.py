@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict
 
 import pygame
 
@@ -8,7 +8,6 @@ from ui_widgets import (
     ACCENT_DARK,
     BORDER,
     BUTTON_NEUTRAL,
-    ERROR,
     PANEL,
     PANEL_ALT,
     SUCCESS,

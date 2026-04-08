@@ -68,35 +68,3 @@ class MatchingEngine:
         scored_candidates.sort(key=lambda x: x[1], reverse=True)
         return scored_candidates[:top_n]
 
-
-# ==========================================
-# MOCK DATA & TESTING
-# ==========================================
-
-if __name__ == "__main__":
-    
-    mock_students = [
-        Student("Alice",   "CV1014", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-        Student("Bob",     "CV1014", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-        Student("Charlie", "CV1011", {"Tue 2PM", "Thu 2PM"},              {"Exam paper practice"}),
-        Student("Diana",   "CV1011", {"Tue 2PM", "Thu 2PM"},              {"Concept understanding"}),
-        Student("Eve",     "CV2020", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
-        Student("Frank",   "MH1811", {"Sat 9AM", "Mon 6PM"},              {"Concept understanding"}),
-        Student("Grace",   "CV2020", {"Thu 2PM"},                         {"Tutorial Help"}),
-        Student("Heidi",   "CV2002", {"Tue 6PM", "Wed 6PM"},              {"Exam paper practice"}),
-        Student("Ivan",    "CV2002", {"Tue 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
-        Student("Judy",    "MH1811", {"Sat 9AM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-    ]
-
-    engine = MatchingEngine()
-    
-    target = mock_students[0] # Alice
-    print(f"Finding matches for {target.name} (Course: {target.course})...\n")
-    
-    matches = engine.find_best_matches(target, mock_students)
-    
-    for match, score in matches:
-        print(f"Match: {match.name} | Score: {score}")
-        print(f"  Shared Slots: {target.time_slots.intersection(match.time_slots)}")
-        print(f"  Shared Goals: {target.objectives.intersection(match.objectives)}")
-        print("  " + "="*30)

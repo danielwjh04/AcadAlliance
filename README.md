@@ -1,93 +1,124 @@
 # AcadAlliance
-AcadAlliance is a Python desktop app for matching NTU students into study groups based on module code, a shared day/start-time slot, and learning objectives. The UI is built with Pygame and the matching/export flow uses Pandas.
 
-## Project files
+## Study Group Matching System
 
-| File | Purpose |
-|---|---|
-| `main.py` | App entrypoint and application coordinator |
-| `ui_widgets.py` | Reusable Pygame widgets such as input boxes, checkboxes, dropdowns, and buttons |
-| `ui_panels.py` | OOP panel/view classes for the form, student pool, and match results |
-| `engine.py` | Matching engine and `Student` data model |
-| `requirements.txt` | Python dependencies |
+AcadAlliance is a desktop study group matching application built with Python, Pygame, and Pandas. It provides a custom GUI for entering learner profiles, comparing compatible study preferences, and exporting the active student pool to Excel.
 
-## Setup
+## Features
 
-1. Check Python:
+- Custom Pygame interface with form inputs, checkboxes, dropdowns, and result panels
+- Scrollable 24-hour time selectors covering `12AM` through `11PM`
+- Pandas-powered export pipeline for saving student data to Excel
+- Matching engine that ranks compatible students by shared availability and learning objectives
+- Dynamic right-side panel that switches between the student pool and match results
+- Telegram handle support for contact-friendly match results
+
+## Requirements
+
+- Python 3.10 or newer recommended
+- `pygame`
+- `pandas`
+- `openpyxl`
+
+## Installation
+
+### VS Code Setup
+
+1. Open a terminal in the folder where you want the project.
+2. Clone the repository:
+
 ```powershell
-python --version
+git clone https://github.com/danielwjh04/AcadAlliance.git
+cd AcadAlliance
 ```
 
-2. Install dependencies:
+3. Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+4. Install dependencies:
+
+```powershell
+pip install pygame pandas openpyxl
+```
+
+If you prefer the project dependency file, you can use:
+
 ```powershell
 pip install -r requirements.txt
 ```
 
-3. Launch the app:
+5. Run the application:
+
 ```powershell
 python main.py
 ```
 
-## How to use
+### Spyder (Anaconda) Setup
 
-Fill in:
-- `First Name`
-- `Last Name`
-- `Module Code`
-- `Telehandle`
-- `Day`
-- `Start Time`
-- `End Time`
-- one or more learning objectives
+1. Open Anaconda Prompt.
+2. Clone the repository and move into the project folder:
 
-Click `Submit` to find matches.
-
-The app:
-- combines first and last name into one student record
-- uses `"{Day} {Start Time}"` as the exact key passed into `MatchingEngine`
-- keeps the full display range like `Mon 6PM-8PM` for the UI and Excel export
-- shows match cards with the student name, Telegram handle, module, slot, and shared objectives
-
-## Matching rules
-
-The engine compares:
-- module code
-- exact matching slot in the form `Day + Start Time`
-- objective overlap
-
-The engine still ranks internally with:
-```text
-score = (time_overlap * 0.7) + (objective_overlap * 0.3)
+```powershell
+git clone https://github.com/danielwjh04/AcadAlliance.git
+cd AcadAlliance
 ```
 
-But the UI does not display the score anymore. It displays the matched student's Telegram handle instead.
+3. Install the required packages into the environment used by Spyder:
 
-## Student Pool
+```powershell
+pip install pygame pandas openpyxl
+```
 
-Before submission, the right panel shows the `Student Pool`.
+You can also install from the dependency file:
 
-It includes:
-- Name
-- Module
-- Slot
-- Telehandle
+```powershell
+pip install -r requirements.txt
+```
 
-The pool supports mouse-wheel scrolling when there are more rows than fit on screen.
+4. Launch Spyder from the same environment:
 
-## Excel export
+```powershell
+spyder
+```
 
-Click `Export to Excel` or press `E` to export the pool.
+5. In Spyder, open `main.py`.
+6. Go to `Run -> Configuration per file`.
+7. Set the file to run in an external system terminal for best Pygame compatibility.
+8. Run the file with `F5`.
 
-Export details:
-- Workbook filename: `student_data.xlsx`
+## How To Use
+
+1. Enter `First Name`, `Last Name`, `Module Code`, and `Telehandle`.
+2. Choose a `Day`, `Start Time`, and `End Time`.
+3. Select one or more learning objectives.
+4. Click `Submit` to add the profile and view the best matches.
+5. Review matches on the right panel, including Telegram handles for quick contact.
+6. Click `Export to Excel` or press `E` to save the current student pool to `student_data.xlsx`.
+7. Click `Clear` to reset the form and start a new submission.
+
+## Controls
+
+| Control | Action |
+| --- | --- |
+| `Submit` button | Validates the form, adds the student to the pool, and shows the best matches |
+| `Clear` button | Resets all form fields and returns the app to a fresh entry state |
+| `Export to Excel` button | Exports the current student pool to `student_data.xlsx` |
+| `E` key | Triggers Excel export when a text input field is not active |
+| Mouse wheel on open dropdown | Scrolls through time options in the 24-hour dropdown list |
+| Mouse wheel on Student Pool | Scrolls the student table when there are more rows than fit on screen |
+
+## File Overview
+
+- `main.py`: Starts the application, manages the seeded student pool, handles submission and export actions, and coordinates the GUI state.
+- `engine.py`: Defines the `Student` model and the matching engine that calculates compatibility scores and returns ranked matches.
+
+## Export Output
+
+- Excel filename: `student_data.xlsx`
 - Worksheet name: `student_data`
-- If `student_data.xlsx` is open in Excel and locked, the app saves a fallback file like `student_data_YYYYMMDD_HHMMSS.xlsx`
 
-## Seed data
-
-The mock pool uses NTU-style modules only:
-- `CV1014`
-- `MH1811`
-- `CV2020`
-- `CV1011`
-- `CV2002`
+If the Excel file is already open in another program, the application automatically saves a timestamped fallback copy instead.
