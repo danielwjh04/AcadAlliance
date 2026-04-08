@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 class Student:
     """Data model representing a student."""
     name: str
-    telegram_handle: str
     course: str
     time_slots: Set[str] = field(default_factory=set)
     objectives: Set[str] = field(default_factory=set)
@@ -77,16 +76,16 @@ class MatchingEngine:
 if __name__ == "__main__":
     
     mock_students = [
-        Student("Alice", "@alice_studies", "CS2040S", {"Mon 6PM", "Wed 6PM"}, {"Concept understanding"}),
-        Student("Bob", "@bob_codes", "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"}, {"Concept understanding", "Tutorial Help"}),
-        Student("Charlie", "@charlie_hacks", "CS2040S", {"Tue 6PM", "Thu 6PM"}, {"Exam paper practice"}),
-        Student("Diana", "@diana_ml", "DSA1101", {"Mon 6PM", "Wed 6PM"}, {"Concept understanding"}),
-        Student("Eve", "@eve_sec", "CS2040S", {"Wed 6PM", "Fri 6PM"}, {"Tutorial Help", "Exam paper practice"}),
-        Student("Frank", "@frank_math", "MH1811", {"Mon 6PM"}, {"Concept understanding"}),
-        Student("Grace", "@grace_eng", "CV2020", {"Tue 6PM"}, {"Tutorial Help"}),
-        Student("Heidi", "@heidi_sec", "CS2030", {"Mon 6PM", "Tue 6PM"}, {"Exam paper practice"}),
-        Student("Ivan", "@ivan_dev", "CS2040S", {"Mon 6PM", "Wed 6PM"}, {"Concept understanding", "Exam paper practice"}),
-        Student("Judy", "@judy_data", "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"}, {"Concept understanding", "Tutorial Help"}),
+        Student("Alice",   "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+        Student("Bob",     "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+        Student("Charlie", "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
+        Student("Diana",   "DSA1101", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+        Student("Eve",     "CS2040S", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
+        Student("Frank",   "MH1811",  {"Mon 6PM"},                         {"Concept understanding"}),
+        Student("Grace",   "CV2020",  {"Tue 6PM"},                         {"Tutorial Help"}),
+        Student("Heidi",   "CS2030",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
+        Student("Ivan",    "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
+        Student("Judy",    "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
     ]
 
     engine = MatchingEngine()
