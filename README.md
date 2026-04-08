@@ -81,7 +81,7 @@ If Anaconda Prompt is unavailable, go to **View → Panes → Terminal** inside 
 
 1. **Fill in the four input fields:**
    - **Full Name** — your name
-   - **Module Code** — e.g. `CS2040S`, `DSA1101`
+   - **Module Code** — e.g. `CV1014`, `MH1811`, `CV2020`
    - **Available Times** — comma-separated, e.g. `Mon 6PM, Wed 6PM, Fri 6PM`
    - **Learning Objectives** — comma-separated, e.g. `Concept understanding, Tutorial Help`
 

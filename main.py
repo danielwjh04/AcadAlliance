@@ -312,34 +312,34 @@ class StudyGroupApp:
 
         # ── Seed data ────────────────────────────────────────────────────────
         # Used the first time the app runs (no Excel file exists yet).
-        # 20 fake students across 5 courses with varied times and objectives so
-        # the matching engine has enough data to produce meaningful results.
+        # 20 fake students across 5 NTU courses with varied times and objectives
+        # so the matching engine has enough data to produce meaningful results.
         seed = [
-            # CS2040S — Data Structures & Algorithms
-            Student("Alice Tan",     "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-            Student("Bob Lim",       "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-            Student("Charlie Ng",    "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
-            Student("Eve Wong",      "CS2040S", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
-            Student("Ivan Goh",      "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            Student("Karen Yeo",     "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Tutorial Help"}),
-            Student("Marcus Lee",    "CS2040S", {"Mon 6PM", "Fri 6PM"},              {"Exam paper practice"}),
-            Student("Nina Chua",     "CS2040S", {"Wed 6PM", "Thu 6PM"},              {"Concept understanding"}),
-            # DSA1101 — Introduction to Data Science
-            Student("Diana Ho",      "DSA1101", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
-            Student("Judy Koh",      "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
-            Student("Omar Rashid",   "DSA1101", {"Tue 6PM", "Sat 10AM"},             {"Tutorial Help", "Exam paper practice"}),
-            Student("Priya Nair",    "DSA1101", {"Wed 6PM", "Fri 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            # CV1014 — Introduction to Computational Thinking
+            Student("Alice Tan",     "CV1014",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+            Student("Bob Lim",       "CV1014",  {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+            Student("Charlie Ng",    "CV1014",  {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
+            Student("Eve Wong",      "CV1014",  {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
+            Student("Ivan Goh",      "CV1014",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            Student("Karen Yeo",     "CV1014",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Tutorial Help"}),
+            Student("Marcus Lee",    "CV1014",  {"Mon 6PM", "Fri 6PM"},              {"Exam paper practice"}),
+            Student("Nina Chua",     "CV1014",  {"Wed 6PM", "Thu 6PM"},              {"Concept understanding"}),
             # MH1811 — Calculus
-            Student("Frank Ong",     "MH1811",  {"Mon 6PM"},                         {"Concept understanding"}),
-            Student("Grace Tan",     "MH1811",  {"Mon 6PM", "Wed 6PM"},              {"Tutorial Help"}),
-            Student("Henry Sim",     "MH1811",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
-            # CS2030 — Programming Methodology II
-            Student("Heidi Chan",    "CS2030",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
-            Student("Leo Tay",       "CS2030",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Tutorial Help"}),
-            Student("Megan Foo",     "CS2030",  {"Tue 6PM", "Thu 6PM"},              {"Tutorial Help"}),
+            Student("Diana Ho",      "MH1811",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+            Student("Judy Koh",      "MH1811",  {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+            Student("Omar Rashid",   "MH1811",  {"Tue 6PM", "Sat 10AM"},             {"Tutorial Help", "Exam paper practice"}),
+            Student("Priya Nair",    "MH1811",  {"Wed 6PM", "Fri 6PM"},              {"Concept understanding", "Exam paper practice"}),
             # CV2020 — Engineering Mechanics
-            Student("Grace Cheong",  "CV2020",  {"Tue 6PM"},                         {"Tutorial Help"}),
-            Student("Samuel Liew",   "CV2020",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            Student("Frank Ong",     "CV2020",  {"Mon 6PM"},                         {"Concept understanding"}),
+            Student("Grace Tan",     "CV2020",  {"Mon 6PM", "Wed 6PM"},              {"Tutorial Help"}),
+            Student("Henry Sim",     "CV2020",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            # MH1812 — Discrete Mathematics
+            Student("Heidi Chan",    "MH1812",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
+            Student("Leo Tay",       "MH1812",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Tutorial Help"}),
+            Student("Megan Foo",     "MH1812",  {"Tue 6PM", "Thu 6PM"},              {"Tutorial Help"}),
+            # CV1011 — Fundamentals of Civil and Environmental Engineering
+            Student("Samuel Liew",   "CV1011",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            Student("Rachel Koh",    "CV1011",  {"Tue 6PM"},                         {"Tutorial Help"}),
         ]
         # Write seed data to Excel immediately so the file exists from first run
         self._write_pool_to_excel(seed)
