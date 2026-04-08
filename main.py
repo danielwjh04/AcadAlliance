@@ -7,14 +7,20 @@ HOW TO RUN:
 
 DEPENDENCIES (install with: pip install pygame pandas openpyxl):
     pygame      — graphical window, event loop, drawing
-    pandas      — CSV student database + Excel export
-    openpyxl    — Excel (.xlsx) writer backend used by pandas
+    pandas      — Excel student database + export
+    openpyxl    — Excel (.xlsx) read/write backend used by pandas
 
 HOW engine.py IS CONNECTED:
     Line 1  — `from engine import Student, MatchingEngine`
     Every time the user clicks Submit, we build a Student object from the
     input boxes and pass it to MatchingEngine.find_best_matches().
     No changes to engine.py are required; this file is purely the UI layer.
+
+DATABASE:
+    students.xlsx is the single source of truth for all registered students.
+    It is created automatically with fake seed data on first run, and is
+    updated every time a new student submits their details.
+    Press E (or click Export) to write a sorted copy to study_groups.xlsx.
 """
 
 import os
@@ -60,9 +66,14 @@ CTRL_X    = MAP_W + 12                  # left edge of the control panel
 CTRL_W    = WINDOW_W - CTRL_X - 12     # width of the control panel
 
 # ── Files ───────────────────────────────────────────────────
-MAP_IMAGE_FILE  = "campus_map.png"      # place this image in the project folder
-DATABASE_FILE   = "students.csv"        # pandas CSV — persists registrations
-EXPORT_FILE     = "study_groups.xlsx"   # output file written by the export function
+DATABASE_FILE   = "students.xlsx"       # pandas Excel database — persists registrations
+EXPORT_FILE     = "study_groups.xlsx"   # sorted export written when user presses E
+
+# ── Table display ────────────────────────────────────────────
+TABLE_COL_WIDTHS = [160, 90, 175, 175]
+TABLE_HEADERS    = ["Name", "Course", "Available Times", "Objectives"]
+TABLE_ROW_H      = 24   # height of each row in the table
+TABLE_SCROLL_SPD = 3    # rows scrolled per mouse-wheel tick
 
 
 # ============================================================
@@ -261,10 +272,8 @@ class StudyGroupApp:
         self.match_results: List[Tuple[Student, float]] = []
         self.last_student: Optional[Student] = None
 
-        # ── Map state ────────────────────────────────────────
-        self.map_image   = self._load_map_image()
-        self.map_rect    = pygame.Rect(10, 50, MAP_W - 20, WINDOW_H - 60)
-        self.map_click: Optional[Tuple[int, int]] = None  # last click coords
+        # ── Database table view state ─────────────────────────
+        self.table_scroll = 0   # how many rows have been scrolled down
 
         # ── Status bar ───────────────────────────────────────
         self.status_msg   = "Enter your details and click Submit to find study partners."
@@ -279,14 +288,15 @@ class StudyGroupApp:
 
     def _load_database(self) -> List[Student]:
         """
-        Read students.csv with pandas on startup.
-        If the file does not exist yet, return the built-in seed pool.
+        Read students.xlsx with pandas on startup.
+        If the file does not exist, create it with fake seed data and save it
+        so the Excel file is always present and viewable from the first run.
 
-        Using pandas here satisfies the assignment's data-processing
-        requirement: the DataFrame gives us searching and sorting for free.
+        Using pandas here satisfies the assignment's data-processing requirement:
+        the DataFrame gives us searching and sorting for free.
         """
         if os.path.exists(DATABASE_FILE):
-            df = pd.read_csv(DATABASE_FILE)
+            df = pd.read_excel(DATABASE_FILE)
             pool = []
             for _, row in df.iterrows():
                 # Split the stored comma-separated strings back into sets
@@ -300,31 +310,61 @@ class StudyGroupApp:
                 ))
             return pool
 
-        # Seed data — used the first time the app runs (no CSV exists yet)
-        return [
-            Student("Alice",   "CS2040S", {"Mon 6PM", "Wed 6PM"},            {"Concept understanding"}),
-            Student("Bob",     "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"}, {"Concept understanding", "Tutorial Help"}),
-            Student("Charlie", "CS2040S", {"Tue 6PM", "Thu 6PM"},            {"Exam paper practice"}),
-            Student("Diana",   "DSA1101", {"Mon 6PM", "Wed 6PM"},            {"Concept understanding"}),
-            Student("Eve",     "CS2040S", {"Wed 6PM", "Fri 6PM"},            {"Tutorial Help", "Exam paper practice"}),
-            Student("Ivan",    "CS2040S", {"Mon 6PM", "Wed 6PM"},            {"Concept understanding", "Exam paper practice"}),
-            Student("Judy",    "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"}, {"Concept understanding", "Tutorial Help"}),
+        # ── Seed data ────────────────────────────────────────────────────────
+        # Used the first time the app runs (no Excel file exists yet).
+        # 20 fake students across 5 courses with varied times and objectives so
+        # the matching engine has enough data to produce meaningful results.
+        seed = [
+            # CS2040S — Data Structures & Algorithms
+            Student("Alice Tan",     "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+            Student("Bob Lim",       "CS2040S", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+            Student("Charlie Ng",    "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Exam paper practice"}),
+            Student("Eve Wong",      "CS2040S", {"Wed 6PM", "Fri 6PM"},              {"Tutorial Help", "Exam paper practice"}),
+            Student("Ivan Goh",      "CS2040S", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            Student("Karen Yeo",     "CS2040S", {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Tutorial Help"}),
+            Student("Marcus Lee",    "CS2040S", {"Mon 6PM", "Fri 6PM"},              {"Exam paper practice"}),
+            Student("Nina Chua",     "CS2040S", {"Wed 6PM", "Thu 6PM"},              {"Concept understanding"}),
+            # DSA1101 — Introduction to Data Science
+            Student("Diana Ho",      "DSA1101", {"Mon 6PM", "Wed 6PM"},              {"Concept understanding"}),
+            Student("Judy Koh",      "DSA1101", {"Mon 6PM", "Wed 6PM", "Fri 6PM"},   {"Concept understanding", "Tutorial Help"}),
+            Student("Omar Rashid",   "DSA1101", {"Tue 6PM", "Sat 10AM"},             {"Tutorial Help", "Exam paper practice"}),
+            Student("Priya Nair",    "DSA1101", {"Wed 6PM", "Fri 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            # MH1811 — Calculus
+            Student("Frank Ong",     "MH1811",  {"Mon 6PM"},                         {"Concept understanding"}),
+            Student("Grace Tan",     "MH1811",  {"Mon 6PM", "Wed 6PM"},              {"Tutorial Help"}),
+            Student("Henry Sim",     "MH1811",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
+            # CS2030 — Programming Methodology II
+            Student("Heidi Chan",    "CS2030",  {"Mon 6PM", "Tue 6PM"},              {"Exam paper practice"}),
+            Student("Leo Tay",       "CS2030",  {"Mon 6PM", "Wed 6PM"},              {"Concept understanding", "Tutorial Help"}),
+            Student("Megan Foo",     "CS2030",  {"Tue 6PM", "Thu 6PM"},              {"Tutorial Help"}),
+            # CV2020 — Engineering Mechanics
+            Student("Grace Cheong",  "CV2020",  {"Tue 6PM"},                         {"Tutorial Help"}),
+            Student("Samuel Liew",   "CV2020",  {"Tue 6PM", "Thu 6PM"},              {"Concept understanding", "Exam paper practice"}),
         ]
+        # Write seed data to Excel immediately so the file exists from first run
+        self._write_pool_to_excel(seed)
+        return seed
 
-    def _save_to_database(self, student: Student) -> None:
+    def _write_pool_to_excel(self, pool: List[Student]) -> None:
         """
-        Append one student record to students.csv using pandas.
-        If the file doesn't exist it is created with a header row.
+        Overwrite students.xlsx with the entire pool.
+        Called both when seeding on first run and after each new registration.
+        Excel does not support row-level appending, so we rewrite the whole file.
         """
-        new_row = pd.DataFrame([{
-            "name":       student.name,
-            "course":     student.course,
-            "time_slots": ", ".join(sorted(student.time_slots)),
-            "objectives": ", ".join(sorted(student.objectives)),
-        }])
-        # mode="a" appends; header=False skips re-writing the column names
-        write_header = not os.path.exists(DATABASE_FILE)
-        new_row.to_csv(DATABASE_FILE, mode="a", header=write_header, index=False)
+        rows = [{
+            "name":       s.name,
+            "course":     s.course,
+            "time_slots": ", ".join(sorted(s.time_slots)),
+            "objectives": ", ".join(sorted(s.objectives)),
+        } for s in pool]
+        pd.DataFrame(rows).to_excel(DATABASE_FILE, index=False)
+
+    def _save_to_database(self) -> None:
+        """
+        Persist the current student pool to students.xlsx.
+        We rewrite the entire file because Excel does not support append mode.
+        """
+        self._write_pool_to_excel(self.student_pool)
 
     def _export_to_excel(self) -> None:
         """
@@ -361,12 +401,6 @@ class StudyGroupApp:
     #  UI CONSTRUCTION
     # ──────────────────────────────────────────────────────────
 
-    def _load_map_image(self) -> Optional[pygame.Surface]:
-        """Load campus_map.png. Returns None if the file is absent."""
-        if os.path.exists(MAP_IMAGE_FILE):
-            return pygame.image.load(MAP_IMAGE_FILE).convert()
-        return None
-
     def _build_ui(self) -> None:
         """
         Instantiate every widget and calculate its screen position.
@@ -386,14 +420,14 @@ class StudyGroupApp:
         self.box_name = InputBox(
             cx, y + 22, w, 38,
             label="Full Name",
-            placeholder="e.g. Daniel Wong"
+            placeholder="e.g. John Tan"
         )
         y += 80
 
         self.box_course = InputBox(
             cx, y + 22, w, 38,
             label="Module Code",
-            placeholder="e.g. CS2040S"
+            placeholder="e.g. CV1014"
         )
         y += 80
 
@@ -421,11 +455,11 @@ class StudyGroupApp:
 
         # ── Buttons ──────────────────────────────────────────
         half = (w - 8) // 2
-        self.btn_submit = Button(cx,           y, half, 42, "Submit & Match",
+        self.btn_submit = Button(cx,            y, half, 42, "Submit & Match",
                                   color=BLUE, hover_color=BLUE_DARK)
         self.btn_clear  = Button(cx + half + 8, y, half, 42, "Clear Fields",
                                   color=(160, 70, 70), hover_color=(130, 45, 45))
-        self.btn_export = Button(cx,           y + 52, w, 38, "Export to Excel  [E]",
+        self.btn_export = Button(cx,            y + 52, w, 38, "Export to Excel  [E]",
                                   color=GREEN, hover_color=GREEN_DARK)
 
         # y position where the status line and results begin
@@ -479,21 +513,20 @@ class StudyGroupApp:
 
             # ── 3. Mouse clicks ──────────────────────────────
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-
-                # Map click: record (x, y) relative to the map image origin
-                if self.map_rect.collidepoint(event.pos):
-                    self.map_click = (
-                        event.pos[0] - self.map_rect.x,
-                        event.pos[1] - self.map_rect.y,
-                    )
-
-                # Button clicks
                 if self.btn_submit.is_clicked(event):
                     self._on_submit()
                 if self.btn_clear.is_clicked(event):
                     self._on_clear()
                 if self.btn_export.is_clicked(event):
                     self._export_to_excel()
+
+            # ── 4. Mouse wheel: scroll the database table ─────
+            if event.type == pygame.MOUSEWHEEL:
+                max_scroll = max(0, len(self.student_pool) - 1)
+                self.table_scroll = max(0, min(
+                    self.table_scroll - event.y * TABLE_SCROLL_SPD,
+                    max_scroll
+                ))
 
     # ──────────────────────────────────────────────────────────
     #  SUBMIT HANDLER  (UI → engine bridge)
@@ -543,7 +576,7 @@ class StudyGroupApp:
 
         # ── Add to pool & persist ────────────────────────────
         self.student_pool.append(new_student)
-        self._save_to_database(new_student)
+        self._save_to_database()
         self.last_student = new_student
 
         # ── Run the matching engine ──────────────────────────
@@ -583,57 +616,71 @@ class StudyGroupApp:
     def draw(self) -> None:
         """Master render — called once every frame. Delegates to sub-methods."""
         self.screen.fill(PANEL_BG)
-        self._draw_map_panel()
+        self._draw_database_table()
         self._draw_divider()
         self._draw_control_panel()
         pygame.display.flip()   # push the completed frame to the screen
 
-    def _draw_map_panel(self) -> None:
+    def _draw_database_table(self) -> None:
         """
-        Render the campus map on the left half of the window.
+        Render the student pool as a scrollable table in the left panel.
 
-        If campus_map.png is present it is scaled to fill the panel.
-        Otherwise a placeholder rectangle is drawn with instructions.
-        After a click, a red dot is drawn at the clicked position and
-        the (x, y) coordinates are displayed next to it.
+        ALGORITHM DESIGN — we compute a visible slice of self.student_pool
+        using the scroll offset, then draw each row with alternating shading
+        so the table is easy to read.
+
+        Scroll with the mouse wheel when the table is visible.
         """
-        # Panel title above the map
-        title = self.font_small.render(
-            "Campus Map  —  click anywhere to capture location", True, MID_GREY
+        panel = pygame.Rect(10, 80, MAP_W - 20, WINDOW_H - 90)
+        pygame.draw.rect(self.screen, WHITE, panel, border_radius=8)
+        pygame.draw.rect(self.screen, LIGHT_GREY, panel, 2, border_radius=8)
+
+        # ── Header row ───────────────────────────────────────
+        header_rect = pygame.Rect(panel.x, panel.y, panel.w, TABLE_ROW_H)
+        pygame.draw.rect(self.screen, BLUE, header_rect,
+                         border_top_left_radius=8, border_top_right_radius=8)
+
+        x = panel.x + 6
+        for header, col_w in zip(TABLE_HEADERS, TABLE_COL_WIDTHS):
+            hdr_surf = self.font_small.render(header, True, WHITE)
+            self.screen.blit(hdr_surf, (x, panel.y + 5))
+            x += col_w
+
+        # ── Data rows ────────────────────────────────────────
+        # How many rows fit in the visible panel area
+        visible_rows = (panel.h - TABLE_ROW_H) // TABLE_ROW_H
+        start = int(self.table_scroll)
+        end   = min(start + visible_rows, len(self.student_pool))
+
+        for i, student in enumerate(self.student_pool[start:end]):
+            row_y    = panel.y + TABLE_ROW_H + i * TABLE_ROW_H
+            row_rect = pygame.Rect(panel.x, row_y, panel.w, TABLE_ROW_H)
+
+            # Alternate row background colour for readability
+            bg = (235, 240, 250) if i % 2 == 0 else WHITE
+            pygame.draw.rect(self.screen, bg, row_rect)
+
+            # Draw each cell, truncating text that is too wide for the column
+            cells = [
+                student.name,
+                student.course,
+                ", ".join(sorted(student.time_slots)),
+                ", ".join(sorted(student.objectives)),
+            ]
+            x = panel.x + 6
+            for cell, col_w in zip(cells, TABLE_COL_WIDTHS):
+                txt  = cell if len(cell) <= 22 else cell[:20] + "\u2026"
+                surf = self.font_small.render(txt, True, DARK_GREY)
+                self.screen.blit(surf, (x, row_y + 5))
+                x += col_w
+
+        # ── Footer ───────────────────────────────────────────
+        footer = self.font_small.render(
+            f"Showing {start + 1}\u2013{end} of {len(self.student_pool)} students"
+            "  |  scroll to see more",
+            True, MID_GREY
         )
-        self.screen.blit(title, (10, 28))
-
-        # Map area background
-        pygame.draw.rect(self.screen, MAP_BG, self.map_rect, border_radius=8)
-
-        if self.map_image:
-            # Scale the image to fit the panel (may distort — swap for aspect-ratio
-            # preserving logic if your supervisor expects a clean map display)
-            scaled = pygame.transform.scale(
-                self.map_image,
-                (self.map_rect.w, self.map_rect.h)
-            )
-            self.screen.blit(scaled, self.map_rect.topleft)
-        else:
-            # Placeholder text — remove once campus_map.png is added
-            hint = self.font_body.render(
-                "Add campus_map.png to the project folder", True, MID_GREY
-            )
-            self.screen.blit(hint, hint.get_rect(center=self.map_rect.center))
-
-        # Map border
-        pygame.draw.rect(self.screen, LIGHT_GREY, self.map_rect, 2, border_radius=8)
-
-        # Draw the clicked-coordinate marker
-        if self.map_click:
-            dot_x = self.map_rect.x + self.map_click[0]
-            dot_y = self.map_rect.y + self.map_click[1]
-            pygame.draw.circle(self.screen, ACCENT, (dot_x, dot_y), 9)
-            pygame.draw.circle(self.screen, WHITE,  (dot_x, dot_y), 5)
-            label = self.font_small.render(
-                f"({self.map_click[0]}, {self.map_click[1]})", True, ACCENT
-            )
-            self.screen.blit(label, (dot_x + 12, dot_y - 10))
+        self.screen.blit(footer, (panel.x + 6, panel.bottom - 20))
 
     def _draw_divider(self) -> None:
         """Vertical separator line between the two panels."""

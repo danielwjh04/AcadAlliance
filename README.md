@@ -18,14 +18,13 @@ AcadAlliance matches NTU students into compatible study groups based on:
 |---|---|
 | `main.py` | Pygame desktop application — run this to launch the app |
 | `engine.py` | Matching engine — compatibility scoring logic |
-| `students.csv` | Auto-generated student database (created on first Submit) |
-| `study_groups.xlsx` | Excel export (generated when you press E) |
-| `campus_map.png` | Place your campus map image here (optional) |
+| `students.xlsx` | Student database — auto-created on first run with seed data |
+| `study_groups.xlsx` | Sorted Excel export — generated when you press E |
 | `requirements.txt` | Python dependencies |
 
 ---
 
-## Setup
+## How to run — normal setup
 
 **1. Make sure you have Python 3.8 or later**
 ```
@@ -37,55 +36,71 @@ python --version
 pip install pygame pandas openpyxl
 ```
 
-**3. (Optional) Add a campus map**
-
-Place any image named `campus_map.png` in the project folder.
-The app runs fine without it — a placeholder panel is shown instead.
-
-**4. Run the app**
+**3. Launch the app**
 ```
 python main.py
 ```
+
+A window opens immediately. `students.xlsx` is created automatically on first run with 20 pre-loaded students so you have data to match against straight away.
+
+---
+
+## How to run — Spyder (lab setting)
+
+Pygame conflicts with Spyder's IPython console. You need to tell Spyder to run the script in an external terminal instead.
+
+**One-time setup:**
+1. Open `main.py` in Spyder
+2. Go to **Run → Configuration per file** (or press `F6`)
+3. Under *Console*, select **Execute in an external system terminal**
+4. Click **OK**
+
+**Every time you want to run it:**
+- Press **F5** — a separate terminal and Pygame window will open automatically
+
+**Installing dependencies in the lab:**
+
+Open **Anaconda Prompt** from the Start menu and run:
+```
+pip install pygame-ce pandas openpyxl
+```
+If Anaconda Prompt is unavailable, go to **View → Panes → Terminal** inside Spyder and run the same command there.
+
+> Note: `pygame-ce` is a drop-in replacement for `pygame` — same import, no code changes needed. Use it if `pip install pygame` fails on your Python version.
 
 ---
 
 ## How to use the app
 
-### Registering and finding matches
+### Left panel — Student Pool
+- Displays all registered students as a scrollable table
+- **Scroll with the mouse wheel** to see more rows
+- Updates live every time a new student submits their details
 
-1. **Fill in the four input fields** on the right panel:
+### Right panel — Register & Match
+
+1. **Fill in the four input fields:**
    - **Full Name** — your name
    - **Module Code** — e.g. `CS2040S`, `DSA1101`
    - **Available Times** — comma-separated, e.g. `Mon 6PM, Wed 6PM, Fri 6PM`
-   - **Learning Objectives** — comma-separated, e.g. `Concept understanding, Tutorial Help, Exam paper practice`
+   - **Learning Objectives** — comma-separated, e.g. `Concept understanding, Tutorial Help`
 
 2. Click **Submit & Match**
 
-3. Your top 3 most compatible study partners are displayed on screen, showing:
-   - Compatibility score (with a visual score bar)
+3. Your top 3 most compatible study partners appear on screen, each showing:
+   - Compatibility score with a visual bar
    - Shared available time slots
    - Shared learning objectives
 
-4. Your registration is automatically saved to `students.csv` so you appear in future searches.
+4. Your entry is saved to `students.xlsx` automatically
 
-### Map panel
-
-- Click anywhere on the campus map (left side of the screen)
-- The app captures and displays the `(x, y)` pixel coordinates of your click
-
-### Exporting data
-
-- Press **`E`** on your keyboard, or click the **Export to Excel** button
-- All registered students are saved to `study_groups.xlsx`, sorted by course then name
-- Open the file in Excel or Google Sheets to view the full database
-
-### Other controls
+### Controls
 
 | Key / Button | Action |
 |---|---|
 | `Submit & Match` | Register and find matches |
 | `Clear Fields` | Wipe all input boxes |
-| `Export to Excel` or `E` | Save database to .xlsx |
+| `Export to Excel` or `E` | Save a sorted copy of the pool to `study_groups.xlsx` |
 | `ESC` | Quit the application |
 
 ---
@@ -119,6 +134,4 @@ score = (time_overlap × 0.7) + (objective_overlap × 0.3)
 shared items ÷ smaller of the two sets
 ```
 
-This means a student with limited availability is not penalised for matching
-fully with someone who has wider availability. A score of `0.0` is returned
-immediately if the courses differ or if there is no shared time slot at all.
+A score of `0.0` is returned immediately if the courses differ or if there is no shared time slot at all.
